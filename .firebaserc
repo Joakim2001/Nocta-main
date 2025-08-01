@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "nocta-d1113"
+  },
+  "targets": {},
+  "etags": {
+    "nocta-d1113": {
+      "extensionInstances": {
+        "email-sender": "f2b76c1811fafe4c2f44d0f75b771d49104146474a71c852de0fba3d85880cf2",
+        "firestore-send-email": "be80cd40de908b5487f4aecc175f2e7741ddd6bced57aa684fa986c2c9bde7fa"
+      }
+    }
+  }
+}

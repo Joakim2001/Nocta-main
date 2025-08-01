@@ -1,0 +1,38 @@
+{
+  "short_name": "Nocta",
+  "name": "Nocta - Nightlife Events",
+  "description": "Discover the best clubs, bars, and festivals in Copenhagen",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "logo512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#3b1a5c",
+  "background_color": "#3b1a5c",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["entertainment", "lifestyle", "social"],
+  "screenshots": [
+    {
+      "src": "logo512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ]
+}

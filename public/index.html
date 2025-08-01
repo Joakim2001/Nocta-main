@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico?v=3" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="Nocta - Nightlife Events" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json?v=3" />
+    <title>Nocta</title>
+    <!-- CACHE BUST v3 - Force mobile refresh -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    
+    <!-- Prevent locale module resolution errors -->
+    <script>
+      window.__localeData__ = window.__localeData__ || {};
+      window.__localeData__['en'] = window.__localeData__['en'] || {};
+      
+      // Add error handler for module resolution
+      window.addEventListener('error', function(e) {
+        if (e.message && e.message.includes("Cannot find module './en'")) {
+          console.warn('Locale module error caught and suppressed:', e.message);
+          e.preventDefault();
+          return false;
+        }
+      }, true);
+
+      // Force mobile cache refresh
+      (function() {
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) {
+          // Force reload on mobile if this is a cached version
+          const lastVersion = localStorage.getItem('nocta_version');
+          const currentVersion = 'v3';
+          
+          if (lastVersion !== currentVersion) {
+            localStorage.setItem('nocta_version', currentVersion);
+            if (lastVersion) {
+              console.log('🔄 Mobile cache refresh detected, reloading...');
+              window.location.reload(true);
+            }
+          }
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <!--
+      This HTML file is a template.
+      If you open it directly in the browser, you will see an empty page.
+
+      You can add webfonts, meta tags, or analytics to this file.
+      The build step will place the bundled scripts into the <body> tag.
+
+      To begin the development, run `npm start` or `yarn start`.
+      To create a production bundle, use `npm run build` or `yarn build`.
+    -->
+  </body>
+</html>
