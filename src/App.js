@@ -1090,7 +1090,7 @@ function App() {
     return () => unsub();
   }, [userType, setProfileLoaded, setProfileComplete, location.pathname]);
 
-  const hideNavRoutes = ['/', '/login', '/signup', '/profile-setup', '/favorites-setup', '/select-type', '/company-setup', '/company-setup-final', '/company-verification-setup', '/company-verification', '/verification-pending', '/company-login', '/company-signup'];
+  const hideNavRoutes = ['/', '/login', '/signup', '/profile-setup', '/favorites-setup', '/select-type', '/company-setup', '/company-setup-final', '/company-verification-setup', '/company-verification', '/verification-pending', '/company-login', '/company-signup', '/company-events'];
   const shouldShowBottomNav = !hideNavRoutes.includes(location.pathname) && !location.pathname.startsWith('/company-event/') && !location.pathname.startsWith('/company-deleted-event/') && !location.pathname.startsWith('/event/');
 
   if (checkingProfile) {
@@ -1145,7 +1145,10 @@ function App() {
               <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-        {shouldShowBottomNav && (userType === 'company' ? <BottomNavCompany unreadCount={unreadCount} /> : <BottomNav unreadCount={unreadCount} />)}
+        {shouldShowBottomNav && (() => {
+          console.log('🔍 App.js: Navigation check - userType:', userType, 'shouldShowBottomNav:', shouldShowBottomNav);
+          return userType === 'company' ? <BottomNavCompany unreadCount={unreadCount} /> : <BottomNav unreadCount={unreadCount} />;
+        })()}
     </ThemeProvider>
   );
 }

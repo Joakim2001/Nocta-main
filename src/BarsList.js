@@ -9,6 +9,7 @@ import CalendarModal from './CalendarModal';
 import { checkAndArchiveEvent } from './autoArchiveUtils';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { logger } from './utils/logger';
+import { filterOutDeletedEvents } from './utils/eventFilters';
 
 // Helper function to clean URLs by removing quotes
 const cleanImageUrl = (url) => {
@@ -396,6 +397,9 @@ function BarsList() {
         ...snap1.docs.map(doc => ({ id: doc.id, ...doc.data() })),
         ...snap2.docs.map(doc => ({ id: doc.id, ...doc.data() })),
       ];
+
+      // Filter out events that companies have deleted
+      allEvents = await filterOutDeletedEvents(allEvents);
 
       // TEMPORARILY DISABLED: Check for outdated events and archive them
       // The auto-archiving was too aggressive and moving current events

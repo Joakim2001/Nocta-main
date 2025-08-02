@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { db } from "./firebase";
-import { doc, getDoc, collection, getDocs } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs, deleteDoc, setDoc } from "firebase/firestore";
 import { storage } from './firebase';
 import { ref, getDownloadURL } from "firebase/storage";
 import { getAuth } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import BottomNav from './BottomNav';
+import BottomNavCompany from './BottomNavCompany';
 import { logger } from './utils/logger';
 
 // Helper function to clean URLs by removing quotes
@@ -93,6 +94,145 @@ export default function EventDetailPage() {
   // console.log('🚨 EVENT DETAIL PAGE LOADED!');
   // console.log('🚨 Component mount timestamp:', new Date().toISOString());
   
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Delete event function for companies
+  const handleDeleteEvent = async () => {
+    if (!event || deleting) return;
+    
+    setDeleting(true);
+    const auth = getAuth();
+    const user = auth.currentUser;
+    
+    try {
+      console.log('🗑️ Full event object:', event);
+      console.log('🗑️ Event object keys:', Object.keys(event));
+      
+      let actualEventId = String(event.id); // Ensure ID is a string
+      console.log('🗑️ Attempting to delete event:', actualEventId);
+      console.log('🗑️ Event ID type:', typeof actualEventId);
+      console.log('🗑️ Original event ID:', event.id, 'Type:', typeof event.id);
+      
+      // Check if this looks like a timestamp (very long number)
+      if (actualEventId.length > 15 && !isNaN(actualEventId)) {
+        console.log('⚠️ Event ID looks like a timestamp, not a Firestore document ID');
+        console.log('⚠️ This may indicate an issue with how events are being stored/retrieved');
+        
+        // Try to find alternative ID fields
+        if (event.documentId) {
+          console.log('🔧 Found documentId field:', event.documentId);
+          actualEventId = String(event.documentId);
+        } else if (event.originalId) {
+          console.log('🔧 Found originalId field:', event.originalId);
+          actualEventId = String(event.originalId);
+        } else {
+          console.log('❌ No alternative ID found - searching by event content');
+          
+          // Try to find the event by matching its content across collections
+          const searchCollections = ['Instagram_posts', 'company-events'];
+          let foundDocId = null;
+          
+          for (const collectionName of searchCollections) {
+            console.log(`🔍 Searching ${collectionName} for matching event...`);
+            const snapshot = await getDocs(collection(db, collectionName));
+            
+            for (const doc of snapshot.docs) {
+              const data = doc.data();
+              // Match by title/name and other unique properties
+              if ((data.title && data.title === event.title) ||
+                  (data.name && data.name === event.name) ||
+                  (data.caption && data.caption === event.caption) ||
+                  (data.Image1 && data.Image1 === event.Image1)) {
+                console.log('✅ Found matching event by content:', doc.id);
+                foundDocId = doc.id;
+                break;
+              }
+            }
+            if (foundDocId) break;
+          }
+          
+          if (foundDocId) {
+            console.log('🔧 Using found document ID:', foundDocId);
+            actualEventId = foundDocId;
+          } else {
+            console.log('❌ Could not find event in any collection');
+            throw new Error('Event not found - cannot delete');
+          }
+        }
+      }
+      
+      // Try to find and delete from the correct collection
+      let deletedFrom = null;
+      
+      // Try Instagram_posts first
+      try {
+        console.log('🗑️ Attempting to delete from Instagram_posts with ID:', actualEventId);
+        await deleteDoc(doc(db, 'Instagram_posts', actualEventId));
+        deletedFrom = 'Instagram_posts';
+        console.log('✅ Successfully deleted from Instagram_posts');
+      } catch (error) {
+        console.log('❌ Failed to delete from Instagram_posts:', error.message);
+        console.log('🗑️ Attempting to delete from company-events with ID:', actualEventId);
+        // Try company-events
+        try {
+          await deleteDoc(doc(db, 'company-events', actualEventId));
+          deletedFrom = 'company-events';
+          console.log('✅ Successfully deleted from company-events');
+        } catch (error) {
+          console.log('❌ Failed to delete from company-events:', error.message);
+          console.log('❌ Event not found in any collection for deletion');
+          throw new Error(`Event not found in any collection. ID: ${actualEventId}`);
+        }
+      }
+      
+      // Move to deleted_posts for record keeping
+      if (deletedFrom) {
+        // Verify the deletion worked by trying to fetch the document
+        try {
+          const verifyDoc = await getDoc(doc(db, deletedFrom, actualEventId));
+          if (verifyDoc.exists()) {
+            console.log('⚠️ WARNING: Document still exists after deletion attempt!');
+            throw new Error('Document still exists after deletion - permission issue?');
+          } else {
+            console.log('✅ Verified: Document successfully deleted from', deletedFrom);
+          }
+        } catch (verifyError) {
+          if (verifyError.message.includes('still exists')) {
+            throw verifyError;
+          }
+          // If it's a "not found" error, that's actually good - it means deletion worked
+          console.log('✅ Verified: Document not found (deletion successful)');
+        }
+
+        const deletedEventData = {
+          ...event,
+          deletedAt: new Date(),
+          deletedBy: user?.uid,
+          originalCollection: deletedFrom
+        };
+        
+        await setDoc(doc(db, 'deleted_posts', actualEventId), deletedEventData);
+        console.log('✅ Successfully moved to deleted_posts');
+      }
+      
+      alert('Event deleted successfully!');
+      
+      // Clear any cached event data
+      sessionStorage.removeItem(`event_${actualEventId}`);
+      sessionStorage.removeItem(`event_${event.id}`);
+      
+      navigate('/company-events');
+      
+    } catch (error) {
+      console.error('❌ Error deleting event:', error);
+      alert('Failed to delete event. Please try again.');
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
+  
   // Prevent locale module errors
   if (typeof window !== 'undefined') {
     window.__localeData__ = window.__localeData__ || {};
@@ -101,6 +241,7 @@ export default function EventDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const isCompanyView = searchParams.get('from') === 'company';
   
   // Try to get cached event data first
   const cachedEventData = sessionStorage.getItem(`event_${id}`);
@@ -681,9 +822,14 @@ export default function EventDetailPage() {
             logger.debug('Navigating back - clearing event cache');
             sessionStorage.removeItem(`event_${id}`);
             
+            // Check if we came from company events page
+            const fromCompany = searchParams.get('from') === 'company';
+            if (fromCompany) {
+              logger.debug('EventDetail - Returning to company events page');
+              navigate('/company-events');
+            }
             // Check if we came from bars page
-            const fromBars = searchParams.get('from') === 'bars';
-            if (fromBars) {
+            else if (searchParams.get('from') === 'bars') {
               logger.debug('EventDetail - Returning to bars page');
               navigate('/bars');
             } else {
@@ -922,54 +1068,98 @@ export default function EventDetailPage() {
 
         {/* Action Buttons */}
         <div style={{ display: 'flex', gap: '16px', marginTop: '32px' }}>
-            {url && (
-              <a href={url} target="_blank" rel="noopener noreferrer" style={{
-                flex: 1,
-                background: 'linear-gradient(90deg, #3E29F0 0%, #a445ff 100%)',
-                color: 'white',
-                padding: '14px',
-                borderRadius: 999,
-                textDecoration: 'none',
-                fontWeight: 600,
-                fontSize: '1rem',
-                boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                See post
-              </a>
-            )}
-            {/* Only show Tickets button if event has proper ticket configuration */}
-            {((event?.ticketConfiguration?.pricingTiers?.length > 0 && event?.ticketConfiguration?.pricingTiers?.some(tier => parseInt(tier.quantity) > 0)) || event?.ticketType === 'Free ticket') && event?.ticketConfiguration && (
-            <button 
-                    onClick={() => {
-                      console.log('🎫 Opening ticket modal for event:', event);
-                      console.log('🎫 Event ticket configuration:', event?.ticketConfiguration);
-                      console.log('🎫 Event pricing tiers:', event?.ticketConfiguration?.pricingTiers);
-                      console.log('🎫 Current cached event data:', sessionStorage.getItem(`event_${id}`));
-                      if (!event?.ticketConfiguration) {
-                        alert('This event does not have ticket information available.');
-                        return;
-                      }
-                      setShowTicketModal(true);
-                    }}
+          {isCompanyView ? (
+            // Company-specific buttons
+            <>
+              <button 
+                onClick={() => setShowDeleteModal(true)}
                 style={{
-                    flex: 1,
-                    background: 'linear-gradient(90deg, #3E29F0 0%, #a445ff 100%)',
-                    color: '#fff',
-                    padding: '14px',
-                    borderRadius: 999,
-                    border: 'none',
-                    fontWeight: 600,
-                    fontSize: '1rem',
-                    boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004',
-                    cursor: 'pointer'
+                  flex: 1,
+                  background: 'linear-gradient(90deg, #dc2626 0%, #ef4444 100%)',
+                  color: 'white',
+                  padding: '14px',
+                  borderRadius: 999,
+                  border: 'none',
+                  fontWeight: 600,
+                  fontSize: '1rem',
+                  boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004',
+                  cursor: 'pointer'
                 }}
-            >
-                Tickets
-            </button>
-            )}
+              >
+                Delete Event
+              </button>
+              {url && (
+                <a href={url} target="_blank" rel="noopener noreferrer" style={{
+                  flex: 1,
+                  background: 'linear-gradient(90deg, #3E29F0 0%, #a445ff 100%)',
+                  color: 'white',
+                  padding: '14px',
+                  borderRadius: 999,
+                  textDecoration: 'none',
+                  fontWeight: 600,
+                  fontSize: '1rem',
+                  boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  See post
+                </a>
+              )}
+            </>
+          ) : (
+            // Private user buttons (original functionality)
+            <>
+              {url && (
+                <a href={url} target="_blank" rel="noopener noreferrer" style={{
+                  flex: 1,
+                  background: 'linear-gradient(90deg, #3E29F0 0%, #a445ff 100%)',
+                  color: 'white',
+                  padding: '14px',
+                  borderRadius: 999,
+                  textDecoration: 'none',
+                  fontWeight: 600,
+                  fontSize: '1rem',
+                  boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  See post
+                </a>
+              )}
+              {/* Only show Tickets button if event has proper ticket configuration */}
+              {((event?.ticketConfiguration?.pricingTiers?.length > 0 && event?.ticketConfiguration?.pricingTiers?.some(tier => parseInt(tier.quantity) > 0)) || event?.ticketType === 'Free ticket') && event?.ticketConfiguration && (
+              <button 
+                      onClick={() => {
+                        console.log('🎫 Opening ticket modal for event:', event);
+                        console.log('🎫 Event ticket configuration:', event?.ticketConfiguration);
+                        console.log('🎫 Event pricing tiers:', event?.ticketConfiguration?.pricingTiers);
+                        console.log('🎫 Current cached event data:', sessionStorage.getItem(`event_${id}`));
+                        if (!event?.ticketConfiguration) {
+                          alert('This event does not have ticket information available.');
+                          return;
+                        }
+                        setShowTicketModal(true);
+                      }}
+                  style={{
+                      flex: 1,
+                      background: 'linear-gradient(90deg, #3E29F0 0%, #a445ff 100%)',
+                      color: '#fff',
+                      padding: '14px',
+                      borderRadius: 999,
+                      border: 'none',
+                      fontWeight: 600,
+                      fontSize: '1rem',
+                      boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004',
+                      cursor: 'pointer'
+                  }}
+              >
+                  Tickets
+              </button>
+              )}
+            </>
+          )}
         </div>
             </div>
 
@@ -1397,7 +1587,76 @@ export default function EventDetailPage() {
         </div>
       )}
 
-      <BottomNav />
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: '#1f2937',
+            borderRadius: '16px',
+            padding: '24px',
+            margin: '16px',
+            maxWidth: '400px',
+            width: '100%'
+          }}>
+            <h3 style={{ color: 'white', marginBottom: '16px', fontSize: '18px', fontWeight: 600 }}>
+              Delete Event
+            </h3>
+            <p style={{ color: '#d1d5db', marginBottom: '24px', lineHeight: '1.5' }}>
+              Are you sure you want to delete this event? This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid #6b7280',
+                  backgroundColor: 'transparent',
+                  color: '#d1d5db',
+                  fontWeight: 500,
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                  opacity: deleting ? 0.5 : 1
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteEvent}
+                disabled={deleting}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: '#dc2626',
+                  color: 'white',
+                  fontWeight: 500,
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                  opacity: deleting ? 0.5 : 1
+                }}
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Conditional Bottom Navigation */}
+      {isCompanyView ? <BottomNavCompany /> : <BottomNav />}
       
 
     </div>

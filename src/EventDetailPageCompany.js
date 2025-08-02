@@ -40,6 +40,7 @@ export default function EventDetailPageCompany() {
         // If still not found, search all documents for ID mismatch
         if (!docSnap.exists()) {
           console.log('🔍 [FETCH] Not found by direct lookup - searching all collections...');
+          console.log('🔍 [FETCH] Looking for ID:', id, 'Type:', typeof id);
           
           // Search Instagram_posts by content
           const instaSnapshot = await getDocs(collection(db, 'Instagram_posts'));
@@ -48,10 +49,13 @@ export default function EventDetailPageCompany() {
           let foundEvent = null;
           instaSnapshot.docs.forEach(doc => {
             const data = doc.data();
-            console.log('🔍 [FETCH] Checking doc ID:', doc.id, 'title:', data.title);
+            console.log('🔍 [FETCH] Checking doc ID:', doc.id, 'vs target:', id);
             
             // Try to match by various possible IDs or content
-            if (doc.id === id || data.originalId === id || data.id === id) {
+            if (doc.id === id || doc.id === String(id) || 
+                data.originalId === id || data.originalId === String(id) ||
+                data.id === id || data.id === String(id) ||
+                String(doc.id) === String(id)) {
               console.log('✅ [FETCH] Found match in Instagram_posts by ID');
               foundEvent = { id: doc.id, ...data };
             }
@@ -68,9 +72,12 @@ export default function EventDetailPageCompany() {
             
             companySnapshot.docs.forEach(doc => {
               const data = doc.data();
-              console.log('🔍 [FETCH] Checking doc ID:', doc.id, 'title:', data.title);
+              console.log('🔍 [FETCH] Checking company doc ID:', doc.id, 'vs target:', id);
               
-              if (doc.id === id || data.originalId === id || data.id === id) {
+              if (doc.id === id || doc.id === String(id) || 
+                  data.originalId === id || data.originalId === String(id) ||
+                  data.id === id || data.id === String(id) ||
+                  String(doc.id) === String(id)) {
                 console.log('✅ [FETCH] Found match in company-events by ID');
                 foundEvent = { id: doc.id, ...data };
               }
@@ -79,6 +86,29 @@ export default function EventDetailPageCompany() {
             if (foundEvent) {
               console.log('✅ [FETCH] Using found event from company-events:', foundEvent.id);
               docSnap = { exists: () => true, id: foundEvent.id, data: () => foundEvent };
+            } else {
+              // Also try deleted_posts collection
+              console.log('🔍 [FETCH] Searching deleted_posts collection...');
+              const deletedSnapshot = await getDocs(collection(db, 'deleted_posts'));
+              console.log('🔍 [FETCH] Searching', deletedSnapshot.docs.length, 'deleted_posts documents');
+              
+              deletedSnapshot.docs.forEach(doc => {
+                const data = doc.data();
+                console.log('🔍 [FETCH] Checking deleted doc ID:', doc.id, 'vs target:', id);
+                
+                if (doc.id === id || doc.id === String(id) || 
+                    data.originalId === id || data.originalId === String(id) ||
+                    data.id === id || data.id === String(id) ||
+                    String(doc.id) === String(id)) {
+                  console.log('✅ [FETCH] Found match in deleted_posts by ID');
+                  foundEvent = { id: doc.id, ...data };
+                }
+              });
+              
+              if (foundEvent) {
+                console.log('✅ [FETCH] Using found event from deleted_posts:', foundEvent.id);
+                docSnap = { exists: () => true, id: foundEvent.id, data: () => foundEvent };
+              }
             }
           }
         }
@@ -152,7 +182,40 @@ export default function EventDetailPageCompany() {
           }
         } else {
           console.log('❌ [FETCH] Event not found anywhere');
-          setEvent(null);
+          console.log('❌ [FETCH] Searched for ID:', id);
+          console.log('❌ [FETCH] ID might be a timestamp or generated ID');
+          
+          // Last resort: try to find by partial ID match or timestamp
+          console.log('🔍 [FETCH] Attempting last resort search...');
+          let lastResortEvent = null;
+          
+          // Search all collections for any event that might match
+          const allCollections = [
+            { name: 'Instagram_posts', snapshot: await getDocs(collection(db, 'Instagram_posts')) },
+            { name: 'company-events', snapshot: await getDocs(collection(db, 'company-events')) },
+            { name: 'deleted_posts', snapshot: await getDocs(collection(db, 'deleted_posts')) }
+          ];
+          
+          for (const coll of allCollections) {
+            coll.snapshot.docs.forEach(doc => {
+              const data = doc.data();
+              // Try to match by timestamp fields or other potential ID fields
+              if (data.timestamp === id || data.createdAt === id || 
+                  String(data.timestamp) === id || String(data.createdAt) === id ||
+                  data.postId === id || data.eventId === id) {
+                console.log('✅ [FETCH] Found by timestamp/other field in', coll.name);
+                lastResortEvent = { id: doc.id, ...data };
+              }
+            });
+          }
+          
+          if (lastResortEvent) {
+            console.log('✅ [FETCH] Using last resort event:', lastResortEvent.id);
+            setEvent(lastResortEvent);
+          } else {
+            console.log('❌ [FETCH] No event found even with last resort search');
+            setEvent(null);
+          }
         }
       } catch (err) {
         console.error("Error fetching event:", err);

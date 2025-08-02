@@ -1,690 +1,1148 @@
 import React, { useState, useEffect } from "react";
 import { db } from "./firebase";
-import { collection, query, getDocs, addDoc, deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
+import { collection, query, getDocs, getDoc, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
-import { storage } from './firebase';
 import { getAuth } from 'firebase/auth';
-import { getDownloadURL, ref } from 'firebase/storage';
-import BottomNavCompany from './BottomNavCompany';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import BottomNavCompany from "./BottomNavCompany";
+import { logger } from './utils/logger';
 
-
+// Helper functions
 function getEventDate(event) {
-  if (event.eventDate?.toDate) return event.eventDate.toDate();
-  if (event.eventDate) return new Date(event.eventDate);
-  if (event.timestamp?.seconds) return new Date(event.timestamp.seconds * 1000);
-  if (event.timestamp) return new Date(event.timestamp);
-  
-  // For events with only startTime/endTime but no eventDate, create a date from today
-  if (event.startTime && !event.eventDate) {
+  // Handle Firestore Timestamp objects
+  if (event.eventDate && event.eventDate.seconds) {
+    return new Date(event.eventDate.seconds * 1000);
+  }
+  if (event.eventDate) {
+    return new Date(event.eventDate);
+  }
+  if (event.eventDates && event.eventDates.length > 0) {
+    const firstDate = event.eventDates[0];
+    if (firstDate && firstDate.seconds) {
+      return new Date(firstDate.seconds * 1000);
+    }
+    return new Date(firstDate);
+  }
+  if (event.timestamp && event.timestamp.seconds) {
+    return new Date(event.timestamp.seconds * 1000);
+  }
+  if (event.timestamp) {
+    return new Date(event.timestamp);
+  }
+  // Fallback: try to parse startTime if available
+  if (event.startTime) {
     const today = new Date();
-    const [hours, minutes] = event.startTime.split(':').map(Number);
-    today.setHours(hours, minutes, 0, 0);
+    const [hours, minutes] = event.startTime.split(':');
+    today.setHours(parseInt(hours), parseInt(minutes), 0, 0);
     return today;
   }
-  
   return null;
 }
 
 function getEventDateEnd(event) {
+  // Handle Firestore Timestamp objects
+  if (event.eventDateEnd && event.eventDateEnd.seconds) {
+    return new Date(event.eventDateEnd.seconds * 1000);
+  }
   if (event.eventDateEnd) {
-    if (typeof event.eventDateEnd.toDate === 'function') {
-      return event.eventDateEnd.toDate();
-    }
-    const d = new Date(event.eventDateEnd);
-    if (!isNaN(d)) return d;
+    return new Date(event.eventDateEnd);
   }
-  // Also check for other possible end date fields
-  if (event.endDate) {
-    if (typeof event.endDate.toDate === 'function') {
-      return event.endDate.toDate();
+  if (event.eventDates && event.eventDates.length > 1) {
+    const lastDate = event.eventDates[event.eventDates.length - 1];
+    if (lastDate && lastDate.seconds) {
+      return new Date(lastDate.seconds * 1000);
     }
-    const d = new Date(event.endDate);
-    if (!isNaN(d)) return d;
+    return new Date(lastDate);
   }
-  
-  // For events with only endTime but no eventDateEnd, create a date from today
-  if (event.endTime && !event.eventDateEnd) {
+  // Fallback: try to parse endTime if available
+  if (event.endTime) {
     const today = new Date();
-    const [hours, minutes] = event.endTime.split(':').map(Number);
-    today.setHours(hours, minutes, 0, 0);
+    const [hours, minutes] = event.endTime.split(':');
+    today.setHours(parseInt(hours), parseInt(minutes), 0, 0);
     return today;
   }
-  
   return null;
 }
 
 function formatDateLabel(start, end) {
-  if (!start) return 'Unknown date';
-  if (end && end.getTime() !== start.getTime()) {
-    // Show range, e.g. 5 Jul – 26 Jul
-    return `${start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+  if (!start || isNaN(start.getTime())) return 'Date TBA';
+  try {
+    const startStr = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    if (!end || isNaN(end.getTime()) || start.getTime() === end.getTime()) return startStr;
+    const endStr = end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    return `${startStr} - ${endStr}`;
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'Date TBA';
   }
-  return start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
+function formatTimeLabel(start, end) {
+  if (!start) return '';
+  const startStr = start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  if (!end) return startStr;
+  const endStr = end.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return `${startStr} - ${endStr}`;
+}
+
+// EventCard component
 function EventCard({ event, navigate, showPreviousEvents }) {
   const [imageUrl, setImageUrl] = useState(null);
+  const [videoUrl, setVideoUrl] = useState(null);
+  const [mediaType, setMediaType] = useState('image');
+  const [imageProcessed, setImageProcessed] = useState(false);
+
+  const cleanImageUrl = (url) => {
+    if (!url || typeof url !== 'string') return null;
+    return url.trim();
+  };
+
+  const proxyImageUrl = async (url) => {
+    try {
+      console.log('🏢 Attempting to proxy image:', url);
+      const functions = getFunctions();
+      const proxyImage = httpsCallable(functions, 'proxyImage');
+      const result = await proxyImage({ imageUrl: url });
+      console.log('🏢 Proxy result:', result.data);
+      
+      // The proxy returns either proxyUrl or dataUrl
+      if (result.data.dataUrl) {
+        console.log('🏢 Using dataUrl from proxy');
+        return result.data.dataUrl;
+      } else if (result.data.proxyUrl) {
+        console.log('🏢 Using proxyUrl from proxy');
+        return result.data.proxyUrl;
+      } else {
+        console.log('🏢 No valid URL in proxy response');
+        return null;
+      }
+    } catch (error) {
+      console.error('🏢 Error proxying image:', error);
+      // Try to use the original URL directly as fallback
+      console.log('🏢 Trying original URL directly:', url);
+      return url;
+    }
+  };
 
   useEffect(() => {
-    let isMounted = true;
-    const fetchImage = async () => {
-      // Try multiple image fields (Image0 to Image9) - filter and sort
+    if (!event || !event.id) {
+      return;
+    }
+    console.log('🏢 EventCard - Event object keys:', Object.keys(event));
+    console.log('🏢 EventCard - All image fields:', {
+      Image0: event.Image0,
+      Image1: event.Image1,
+      Image2: event.Image2,
+      Image3: event.Image3,
+      Image4: event.Image4,
+      Image5: event.Image5,
+      Displayurl: event.Displayurl,
+      displayurl: event.displayurl,
+      imageUrl: event.imageUrl,
+      url: event.url,
+      inputurl: event.inputurl
+    });
+    
+    (async () => {
+      // Check for video first
+      const videoUrl = event.videourl || event.videoUrl || event.VideoURL;
+      if (videoUrl && videoUrl !== null && videoUrl.trim() !== '') {
+        console.log('🏢 EventCard - Video found:', videoUrl);
+        setVideoUrl(videoUrl);
+        setMediaType('video');
+        setImageProcessed(true);
+        return;
+      }
+      
+      let finalImageUrl = null;
+      
+      // Try all possible image fields in order of preference
       const imageFields = [
-        event.Image0, event.Image1, event.Image2, event.Image3, event.Image4,
-        event.Image5, event.Image6, event.Image7, event.Image8, event.Image9
+        event.Image1, event.Image0, event.Image2, event.Image3, event.Image4, event.Image5,
+        event.Displayurl, event.displayurl, event.imageUrl, event.url, event.inputurl
       ];
       
-      // Filter images: match event ID (without "A") with file ID (without "_imageX")
-      const eventIdWithoutA = event.id.replace(/^A/, '');
-      const validImageFields = imageFields
-        .map((field, index) => ({ field, index }))
-        .filter(({ field }) => field && 
-          (field.startsWith('http') || field))
-        .filter(({ field }) => {
-          // For Firebase Storage paths, check if they match the event ID
-          if (field && !field.startsWith('http')) {
-            // Remove "events/" prefix and "_ImageX" suffix to get the file ID
-            const fileId = field
-              .replace(/^events\//, '') // Remove "events/" prefix
-              .replace(/_Image\d+\.jpg$/, ''); // Remove "_ImageX.jpg" suffix (uppercase I)
-            
-            const matchesEventId = fileId === eventIdWithoutA;
-            return matchesEventId;
-          }
-          return true; // Keep HTTP URLs
-        })
-        .map(({ field, index }) => {
-          // Convert paths to match actual file structure
-          if (field && !field.startsWith('http')) {
-            // Remove "events/" prefix and convert Image to image (lowercase)
-            const correctedPath = field
-              .replace(/^events\//, '') // Remove "events/" prefix
-              .replace(/_Image(\d+)\.jpg$/, '_image$1.jpg'); // Convert Image to image
-            return { field: correctedPath, index };
-          }
-          return { field, index };
-        })
-        .sort((a, b) => a.index - b.index); // Sort by index (lowest number first)
-      
-      // For event cards, only use the first (lowest numbered) matching image
-      if (validImageFields.length > 0) {
-        const { field: imagePath } = validImageFields[0];
-        if (imagePath.startsWith('http')) {
-          if (isMounted) setImageUrl(imagePath);
-          return; // Found a valid image, stop searching
-        } else {
-          try {
-            const url = await getDownloadURL(ref(storage, imagePath));
-            if (isMounted) setImageUrl(url);
-            return; // Found a valid image, stop searching
-          } catch (e) {
-            // Image failed to load, will fall back to default
+      for (const imageField of imageFields) {
+        if (imageField && imageField !== null && imageField.trim() !== '') {
+          console.log('🏢 EventCard - Trying image field:', imageField);
+          const cleanedUrl = cleanImageUrl(imageField);
+          if (cleanedUrl) {
+            try {
+              // Skip Instagram profile URLs as they're not image URLs
+              if (cleanedUrl.includes('instagram.com') && !cleanedUrl.includes('/p/') && !cleanedUrl.includes('.jpg') && !cleanedUrl.includes('.png')) {
+                console.log('🏢 EventCard - Skipping Instagram profile URL:', cleanedUrl);
+                continue;
+              }
+              
+              // For Instagram CDN URLs or any external URLs, always use proxy to avoid CORS
+              if (cleanedUrl.includes('instagram.com') || cleanedUrl.includes('fbcdn.net') || cleanedUrl.includes('scontent')) {
+                console.log('🏢 EventCard - Using proxy for Instagram/CDN URL:', cleanedUrl);
+                const proxiedUrl = await proxyImageUrl(cleanedUrl);
+                if (proxiedUrl) {
+                  finalImageUrl = proxiedUrl;
+                  console.log('🏢 EventCard - Successfully loaded proxied image from:', imageField);
+                  break;
+                }
+              }
+              // For local or same-origin URLs, try direct
+              else if (cleanedUrl.startsWith('/') || cleanedUrl.includes(window.location.origin)) {
+                console.log('🏢 EventCard - Trying direct local URL:', cleanedUrl);
+                finalImageUrl = cleanedUrl;
+                console.log('🏢 EventCard - Using direct local URL:', imageField);
+                break;
+              }
+              // For other external URLs, try proxy
+              else {
+                console.log('🏢 EventCard - Using proxy for external URL:', cleanedUrl);
+                const proxiedUrl = await proxyImageUrl(cleanedUrl);
+                if (proxiedUrl) {
+                  finalImageUrl = proxiedUrl;
+                  console.log('🏢 EventCard - Successfully loaded proxied image from:', imageField);
+                  break;
+                }
+              }
+            } catch (error) {
+              console.log('🏢 EventCard - Failed to load image from:', imageField, error);
+            }
           }
         }
       }
       
-      // If no images found, use default
-      if (isMounted) setImageUrl('/default-tyrolia.jpg');
-    };
-    fetchImage();
-    return () => { isMounted = false; };
-  }, [event]);
+      if (finalImageUrl) {
+        setImageUrl(finalImageUrl);
+        setMediaType('image');
+        console.log('🏢 EventCard - Final image URL set:', finalImageUrl);
+      } else {
+        console.log('🏢 EventCard - No media found, using default image');
+        // Try one more fallback - use a working image URL for testing
+        setImageUrl('/default-tyrolia.jpg');
+        setMediaType('image');
+      }
+      setImageProcessed(true);
+    })();
+  }, [event.id]);
+
+  const handleClick = () => {
+    console.log('🔍 EventCard Click - Event ID:', event.id);
+    console.log('🔍 EventCard Click - Event title:', event.title || event.name);
+    console.log('🔍 EventCard Click - Event collection:', event.collection);
+    
+    // Navigate to the regular event detail page with company context
+    navigate(`/event/${event.id}?from=company`);
+  };
 
   const eventDate = getEventDate(event);
   const eventDateEnd = getEventDateEnd(event);
   const dateLabel = formatDateLabel(eventDate, eventDateEnd);
-  const clubName = event.fullname || event.username || "Unknown";
-  const eventTitle = event.title || event.caption?.substring(0, 50) + (event.caption?.length > 50 ? '...' : '') || "Event";
+  const timeLabel = formatTimeLabel(eventDate, eventDateEnd);
+
+    const clubName = event.fullname || event.venue || event.club || event.username || "Unknown";
 
   return (
     <div
       key={event.id}
+      onClick={handleClick}
             style={{
-        background: '#4b1fa2',
-        borderRadius: 24,
-        margin: '0 auto 48px',
+        background: '#3b1a5c',
+        borderRadius: 32,
+        boxSizing: 'border-box',
+        margin: '0 0 48px 0',
+        zIndex: 10,
+        position: 'relative',
         overflow: 'hidden',
-        boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004',
-        maxWidth: 390,
+        boxShadow: '0 6px 20px 2px rgba(0, 0, 0, 0.7), 0 3px 12px 1px rgba(0, 0, 0, 0.5)',
+        border: '2px solid #888888',
         cursor: 'pointer'
       }}
-      onClick={() => {
-        if (showPreviousEvents) {
-          navigate(`/company-deleted-event/${event.id}`);
-        } else {
-          navigate(`/company-event/${event.id}`);
-        }
-      }}
     >
-      <div style={{ position: 'relative', background: '#22043a' }}>
-        <img src={imageUrl} alt={eventTitle} style={{ width: '100%', height: '12rem', objectFit: 'cover' }} />
-        <div style={{ position: 'absolute', top: 0, right: 0, background: '#2046A6', color: 'white', fontSize: '0.875rem', fontWeight: 700, padding: '4px 12px', borderTopRightRadius: '16px', borderBottomLeftRadius: '16px' }}>
+            <div style={{ position: 'relative', background: '#3b1a5c' }}>
+        {mediaType === 'video' && videoUrl && (
+          <video
+            src={videoUrl}
+            style={{
+              width: '100%',
+              height: '12rem',
+              objectFit: 'cover',
+              backgroundColor: '#000'
+            }}
+            controls
+            preload="metadata"
+          />
+        )}
+        {mediaType === 'image' && imageUrl && (
+          <img
+            src={imageUrl}
+            alt={event.title || event.name}
+            style={{
+              width: '100%',
+              height: '12rem',
+              objectFit: 'cover',
+              backgroundColor: '#f0f0f0'
+            }}
+            onError={() => setImageUrl('/default-tyrolia.jpg')}
+          />
+        )}
+
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)',
+          pointerEvents: 'none'
+        }}></div>
+
+        <div style={{ position: 'absolute', top: 0, right: -1, display: 'flex', gap: 8 }}>
+          <span
+            style={{
+              background: '#6B46C1',
+              color: 'white',
+              fontSize: 14,
+              fontWeight: 'bold',
+              padding: '4px 20px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              borderTopRightRadius: '16px',
+              borderBottomRightRadius: 0,
+              borderTopLeftRadius: 0,
+              borderBottomLeftRadius: '16px',
+              textShadow: '0 2px 8px #3E29F099, 0 1px 3px rgba(255, 255, 255, 0.3)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+            }}
+          >
             {dateLabel}
+          </span>
         </div>
+
+        {event.trending && (
+          <div style={{ position: 'absolute', top: 0, left: -1, display: 'flex', gap: 8 }}>
+            <span
+              style={{
+                background: '#FF0080',
+                color: 'white',
+                fontSize: 14,
+                fontWeight: 'bold',
+                padding: '4px 20px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                borderTopLeftRadius: '16px',
+                borderBottomLeftRadius: 0,
+                borderTopRightRadius: 0,
+                borderBottomRightRadius: '16px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+              }}
+            >
+              TRENDING
+            </span>
+          </div>
+        )}
+
+        <div style={{ position: 'absolute', bottom: 16, right: 8, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, zIndex: 10 }}>
+          <div style={{
+            display: 'inline-block',
+            border: '1px solid #4ade80',
+            color: '#bbf7d0',
+            fontSize: 12,
+            padding: '4px 12px',
+            borderRadius: 9999,
+            background: 'rgba(0,0,0,0.4)',
+            fontWeight: 500
+          }}>
+            {event.likescount > 0 ? `${event.likescount} likes` : "New Event"}
+          </div>
+          <div style={{
+            display: 'inline-block',
+            border: '1px solid #60a5fa',
+            color: 'white',
+            fontSize: 12,
+            padding: '4px 12px',
+            borderRadius: 9999,
+            background: 'rgba(30, 58, 138, 0.6)',
+            fontWeight: 500
+          }}>
+            Be first to comment
+          </div>
+        </div>
+
+        {showPreviousEvents && (
+          <div style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            background: 'rgba(255, 0, 0, 0.8)',
+            color: 'white',
+            padding: '4px 8px',
+            borderRadius: 8,
+            fontSize: 12,
+            fontWeight: 'bold'
+          }}>
+            DELETED
+          </div>
+        )}
       </div>
-      <div style={{ padding: '16px' }}>
-        <h3 style={{ color: 'white', fontSize: '1.125rem', fontWeight: 700, marginBottom: '8px' }}>{eventTitle}</h3>
-        <span style={{ color: '#60a5fa', fontSize: '1rem', fontWeight: 700 }}>@{clubName}</span>
+
+      <div
+        style={{ 
+          background: '#6B46C1', 
+          margin: '0', 
+          border: 'none', 
+          borderRadius: 0, 
+          boxSizing: 'border-box',
+          padding: '20px'
+        }}
+      >
+        <h3 style={{ 
+          fontSize: 18, 
+          fontWeight: 800, 
+          marginBottom: 4, 
+          lineHeight: 1.3,
+          color: '#ffffff', 
+          textShadow: '0 2px 8px #3E29F099, 0 1px 3px rgba(255, 255, 255, 0.3)', 
+          letterSpacing: '0.3px'
+        }}>
+          {event.title && event.title.length > 0
+            ? event.title
+            : event.caption && event.caption.length > 50 
+              ? event.caption.substring(0, 50) + "..." 
+              : event.caption || "Instagram Event"}
+        </h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <span style={{ 
+            color: '#93c5fd', 
+            fontSize: 16, 
+            fontWeight: 'bold',
+            textShadow: '0 2px 8px #3E29F099, 0 1px 2px rgba(147, 197, 253, 0.4)'
+          }}>
+            @{clubName}
+          </span>
+        </div>
       </div>
     </div>
   );
 }
 
-function EventsListCompany() {
-  const [allEvents, setAllEvents] = useState([]);
-  const [events, setEvents] = useState([]);
-  const [showPreviousEvents, setShowPreviousEvents] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+// Deleted Event Card component
+function DeletedEventCard({ event, navigate, onRepublish, onUseAsTemplate }) {
+  const [imageUrl, setImageUrl] = useState(null);
+  const [videoUrl, setVideoUrl] = useState(null);
+  const [mediaType, setMediaType] = useState('image');
+  const [imageProcessed, setImageProcessed] = useState(false);
 
+  // Check if event is outdated (past end date)
+  const isOutdated = () => {
+    const eventEndDate = getEventDateEnd(event);
+    const eventStartDate = getEventDate(event);
+    const now = new Date();
+    
+    if (eventEndDate) {
+      return now > eventEndDate;
+    } else if (eventStartDate) {
+      return now > eventStartDate;
+    }
+    return false;
+  };
+
+  const eventDate = getEventDate(event);
+  const eventDateEnd = getEventDateEnd(event);
+  const dateLabel = formatDateLabel(eventDate, eventDateEnd);
+  const deletedDate = event.deletedAt ? new Date(event.deletedAt.seconds ? event.deletedAt.seconds * 1000 : event.deletedAt).toLocaleDateString() : 'Unknown';
+  const outdated = isOutdated();
+
+  // Load media (simplified version of EventCard logic)
+  useEffect(() => {
+    if (!event || !event.id) return;
+
+    (async () => {
+      // Check for video first
+      const videoUrl = event.videourl || event.videoUrl || event.VideoURL;
+      if (videoUrl && videoUrl !== null && videoUrl.trim() !== '') {
+        setVideoUrl(videoUrl);
+        setMediaType('video');
+        setImageProcessed(true);
+        return;
+      }
+      
+      // Try to find an image
+      const imageFields = ['Image1', 'Displayurl', 'displayurl', 'imageUrl', 'url', 'inputurl'];
+      for (const field of imageFields) {
+        if (event[field]) {
+          setImageUrl(event[field]);
+          setMediaType('image');
+          break;
+        }
+      }
+      
+      if (!imageUrl) {
+        setImageUrl('/default-tyrolia.jpg');
+        setMediaType('image');
+      }
+      setImageProcessed(true);
+    })();
+  }, [event.id]);
+
+  return (
+    <div style={{
+      background: '#2a1a3e',
+      borderRadius: 32,
+      boxSizing: 'border-box',
+      margin: '0 0 24px 0',
+      position: 'relative',
+      overflow: 'hidden',
+      boxShadow: '0 4px 16px 1px rgba(0, 0, 0, 0.5)',
+      border: '2px solid #666',
+      opacity: 0.8
+    }}>
+      <div style={{ position: 'relative', background: '#2a1a3e' }}>
+        {mediaType === 'video' && videoUrl && (
+          <video
+            src={videoUrl}
+            style={{
+              width: '100%',
+              height: '8rem',
+              objectFit: 'cover',
+              backgroundColor: '#000'
+            }}
+            controls
+            preload="metadata"
+          />
+        )}
+        {mediaType === 'image' && imageUrl && (
+          <img
+            src={imageUrl}
+            alt={event.title || event.name}
+            style={{
+              width: '100%',
+              height: '8rem',
+              objectFit: 'cover',
+              backgroundColor: '#f0f0f0'
+            }}
+            onError={() => setImageUrl('/default-tyrolia.jpg')}
+          />
+        )}
+
+        {/* Deleted overlay */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.6) 50%, rgba(0,0,0,0.3) 100%)',
+          pointerEvents: 'none'
+        }}></div>
+
+        {/* Deleted badge */}
+        <div style={{ position: 'absolute', top: 8, left: 8 }}>
+          <span style={{
+            background: '#dc2626',
+            color: 'white',
+            fontSize: 12,
+            fontWeight: 'bold',
+            padding: '4px 12px',
+            borderRadius: '12px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+          }}>
+            DELETED
+          </span>
+        </div>
+
+        {outdated && (
+          <div style={{ position: 'absolute', top: 8, right: 8 }}>
+            <span style={{
+              background: '#f59e0b',
+              color: 'white',
+              fontSize: 12,
+              fontWeight: 'bold',
+              padding: '4px 12px',
+              borderRadius: '12px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+            }}>
+              OUTDATED
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div style={{
+        background: '#2a1a3e',
+        padding: '16px',
+        color: 'white'
+      }}>
+        <h3 style={{
+          fontSize: '16px',
+          fontWeight: 600,
+          margin: '0 0 8px 0',
+          color: '#d1d5db'
+        }}>
+          {event.title || event.name || 'Untitled Event'}
+        </h3>
+        
+        <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '12px' }}>
+          <div>Event Date: {dateLabel}</div>
+          <div>Deleted: {deletedDate}</div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {!outdated && (
+            <button
+              onClick={() => {
+                console.log('🔄 Republish button clicked for event:', event.id);
+                onRepublish(event.id);
+              }}
+              style={{
+                flex: 1,
+                background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                color: 'white',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: 'none',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'transform 0.1s ease'
+              }}
+              onMouseDown={(e) => e.target.style.transform = 'scale(0.95)'}
+              onMouseUp={(e) => e.target.style.transform = 'scale(1)'}
+              onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+            >
+              ↗️ Republish
+            </button>
+          )}
+          <button
+            onClick={() => {
+              console.log('📋 Template button clicked for event:', event.id);
+              onUseAsTemplate(event.id);
+            }}
+            style={{
+              flex: 1,
+              background: 'linear-gradient(90deg, #3b82f6 0%, #1d4ed8 100%)',
+              color: 'white',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              border: 'none',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'transform 0.1s ease'
+            }}
+            onMouseDown={(e) => e.target.style.transform = 'scale(0.95)'}
+            onMouseUp={(e) => e.target.style.transform = 'scale(1)'}
+            onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+          >
+            📋 Use as Template
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Main component
+function EventsListCompany() {
+  const [events, setEvents] = useState([]);
+  const [deletedEvents, setDeletedEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showDeletedEvents, setShowDeletedEvents] = useState(false);
   const navigate = useNavigate();
 
-  // Function to clean up duplicate events in deleted_posts
-  const cleanupDuplicateEvents = async () => {
+  // Republish a deleted event (move back to original collection)
+  const handleRepublish = async (eventId) => {
     try {
-      console.log('🧹 Cleaning up duplicate events in deleted_posts...');
+      console.log('🔄 Starting republish process for event ID:', eventId);
       
-      const deletedEventsSnapshot = await getDocs(collection(db, 'deleted_posts'));
-      const allDeletedEvents = deletedEventsSnapshot.docs.map(doc => ({
-        docId: doc.id,
-        ...doc.data()
-      }));
-      
-      // Group events by title and username to find duplicates
-      const eventGroups = allDeletedEvents.reduce((groups, event) => {
-        const key = `${event.title}-${event.username}`;
-        if (!groups[key]) {
-          groups[key] = [];
-        }
-        groups[key].push(event);
-        return groups;
-      }, {});
-      
-      // Remove duplicates (keep the most recent one)
-      for (const [key, events] of Object.entries(eventGroups)) {
-        if (events.length > 1) {
-          console.log(`🧹 Found ${events.length} duplicates for: ${key}`);
-          
-          // Sort by deletedAt date (newest first)
-          events.sort((a, b) => {
-            const dateA = a.deletedAt ? new Date(a.deletedAt.seconds * 1000) : new Date(0);
-            const dateB = b.deletedAt ? new Date(b.deletedAt.seconds * 1000) : new Date(0);
-            return dateB - dateA;
-          });
-          
-          // Keep the first (newest) and delete the rest
-          for (let i = 1; i < events.length; i++) {
-            await deleteDoc(doc(db, 'deleted_posts', events[i].docId));
-            console.log(`🗑️ Removed duplicate: ${events[i].docId}`);
-          }
-        }
+      const eventToRepublish = deletedEvents.find(e => e.id === eventId);
+      if (!eventToRepublish) {
+        console.error('❌ Event not found in deleted events list');
+        alert('Event not found');
+        return;
       }
-      
-      console.log('✅ Cleanup completed');
-    } catch (error) {
-      console.error('❌ Error during cleanup:', error);
-    }
-  };
 
-  // Function to move event to deleted_posts
-  const moveEventToDeleted = async (event, deletedBy = 'manual') => {
-    try {
+      console.log('🔄 Found event to republish:', eventToRepublish.title || eventToRepublish.name);
+
       const auth = getAuth();
       const user = auth.currentUser;
+
+      // Determine target collection based on original collection
+      const targetCollection = eventToRepublish.originalCollection || 'Instagram_posts';
+      console.log('🔄 Target collection:', targetCollection);
       
-      console.log('🗑️ Moving event to deleted_posts:', event.title);
-      console.log('🗑️ Event data:', event);
-      console.log('🗑️ User UID:', user?.uid);
+      // Remove deletion metadata and ensure proper ID
+      const { deletedAt, deletedBy, originalCollection, originalDataId, ...eventData } = eventToRepublish;
       
-      // Check if event already exists in deleted_posts to prevent duplicates
-      console.log('🗑️ Step 0: Checking for existing deleted event...');
-      const deletedEventsSnapshot = await getDocs(collection(db, 'deleted_posts'));
-      const existingDeleted = deletedEventsSnapshot.docs.find(doc => {
-        const data = doc.data();
-        return data.id === event.id || 
-               (data.title === event.title && data.username === event.username);
-      });
+      // Use the proper event ID (not the timestamp)
+      const actualEventId = String(eventId);
+      console.log('🔄 Using event ID for republish:', actualEventId);
       
-      if (existingDeleted) {
-        console.log('⚠️ Event already exists in deleted_posts, skipping...');
-        // Still remove from Instagram_posts if it exists there
-        try {
-          await deleteDoc(doc(db, 'Instagram_posts', event.id));
-          console.log('✅ Removed duplicate from Instagram_posts');
-        } catch (e) {
-          console.log('ℹ️ Event already removed from Instagram_posts');
-        }
-        return true;
-      }
+      // Add back to original collection
+      console.log('🔄 Adding event back to', targetCollection);
+      await setDoc(doc(db, targetCollection, actualEventId), eventData);
+      console.log('✅ Event added back to', targetCollection);
       
-      // Add event to deleted_posts collection first
-      console.log('🗑️ Step 1: Adding to deleted_posts...');
-      const deletedEventData = {
-        ...event,
-        originalId: event.id, // Keep track of original ID
-        deletedAt: new Date(),
-        deletedBy: deletedBy
-      };
+      // Remove from deleted_posts
+      console.log('🔄 Removing from deleted_posts');
+      await deleteDoc(doc(db, 'deleted_posts', actualEventId));
+      console.log('✅ Event removed from deleted_posts');
       
-      await setDoc(doc(db, 'deleted_posts', event.id), deletedEventData);
-      console.log('✅ Successfully added to deleted_posts');
+      console.log('✅ Event republished successfully');
+      alert('Event republished successfully! It will now be visible to private users.');
       
-      // Remove from Instagram_posts
-      console.log('🗑️ Step 2: Removing from Instagram_posts...');
-      await deleteDoc(doc(db, 'Instagram_posts', event.id));
-      console.log('✅ Successfully removed from Instagram_posts');
+      // Refresh the events list
+      window.location.reload();
       
-      console.log('✅ Event moved to deleted_posts successfully');
-      return true;
     } catch (error) {
-      console.error('❌ Error moving event to deleted_posts:', error);
-      console.error('❌ Error details:', error.code, error.message);
-      return false;
+      console.error('❌ Error republishing event:', error);
+      console.error('❌ Error details:', error.message);
+      alert(`Failed to republish event: ${error.message}`);
     }
   };
 
-  // Auto-archive outdated events
-  const autoArchiveOutdatedEvents = async (events) => {
-    const now = new Date();
-    const outdatedEvents = events.filter(event => {
-      const eventDate = getEventDate(event);
-      const eventDateEnd = getEventDateEnd(event);
-      const dateToCheck = eventDateEnd || eventDate;
-      return dateToCheck && dateToCheck < now;
-    });
-
-    console.log('🔄 Auto-archiving', outdatedEvents.length, 'outdated events');
-    
-    for (const event of outdatedEvents) {
-      await moveEventToDeleted(event, 'auto-archive');
+  // Use deleted event as template for new event
+  const handleUseAsTemplate = (eventId) => {
+    const eventToTemplate = deletedEvents.find(e => e.id === eventId);
+    if (!eventToTemplate) {
+      alert('Event not found');
+      return;
     }
+
+    // Store the template data in sessionStorage
+    const templateData = {
+      title: eventToTemplate.title || eventToTemplate.name,
+      description: eventToTemplate.description || eventToTemplate.caption,
+      location: eventToTemplate.location || eventToTemplate.venue,
+      ticketConfiguration: eventToTemplate.ticketConfiguration,
+      Image1: eventToTemplate.Image1,
+      videourl: eventToTemplate.videourl,
+      // Don't copy dates - let user set new dates
+      isTemplate: true,
+      templateSource: eventId
+    };
     
-    return outdatedEvents.length;
+    sessionStorage.setItem('eventTemplate', JSON.stringify(templateData));
+    
+    // Navigate to create event page
+    navigate('/company-create-event/new');
   };
 
+  // Helper functions for filtering
+  function isClubOrFestival(event) {
+    const clubFestivalNames = [
+      'aveant', 'karruselfest', 'culture box', 'pumpehuset', 'vEGA', 'rust', 'bakken', 'tivoli',
+      'parken', 'royal arena', 'forum', 'falkoner', 'amager bio', 'cinemateket', 'imperial',
+      'lille vega', 'store vega', 'loppen', 'mojo', 'jazzhouse', 'la fontaine', 'huset',
+      'christiania', 'freetown', 'festival', 'roskilde', 'northside', 'smukfest', 'tinderbox'
+    ];
+    
+    const eventName = (event.title || event.name || '').toLowerCase();
+    const venue = (event.location || event.venue || '').toLowerCase();
+    const username = (event.username || '').toLowerCase();
+    
+    return clubFestivalNames.some(name => 
+      eventName.includes(name) || venue.includes(name) || username.includes(name)
+    );
+  }
 
+  function isBar(event) {
+    const barNames = [
+      'bar', 'pub', 'cocktail', 'whisky', 'gin', 'vodka', 'rum', 'tequila', 'beer',
+      'øl', 'bodega', 'kro', 'værtshus', 'brasserie', 'bistro', 'tavern', 'lounge'
+    ];
+    
+    const eventName = (event.title || event.name || '').toLowerCase();
+    const venue = (event.location || event.venue || '').toLowerCase();
+    const username = (event.username || '').toLowerCase();
+    
+    return barNames.some(name => 
+      eventName.includes(name) || venue.includes(name) || username.includes(name)
+    );
+  }
 
   useEffect(() => {
-    const fetchCompanyEvents = async () => {
-      console.log('🏢 === COMPANY EVENTS PAGE LOADING ===');
-      const auth = getAuth();
+    const auth = getAuth();
+    
+    // Keep checking for user until found or timeout
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    const checkForUser = async () => {
+      attempts++;
+      console.log(`🏢 === ATTEMPT ${attempts} - CHECKING FOR USER ===`);
+      
       const user = auth.currentUser;
-      if (!user) return;
-      console.log('🏢 Current user in company events:', user.uid);
+      console.log('🏢 Current user:', user ? user.email : 'No user');
+      console.log('🏢 User UID:', user ? user.uid : 'No UID');
+      
+      if (!user && attempts < maxAttempts) {
+        console.log(`🏢 No user found, retrying in 500ms... (attempt ${attempts}/${maxAttempts})`);
+        setTimeout(checkForUser, 500);
+        return;
+      }
+      
+      if (!user) {
+        console.log('🏢 No user logged in after all attempts');
+        console.log('🏢 === TEMPORARY: SHOWING KARRUSEL EVENTS FOR TESTING ===');
+        // Temporary fallback for testing - will show Karrusel events
+      } else {
+        console.log('🏢 === USER FOUND, FETCHING EVENTS ===');
+      }
 
-      // 1. Fetch the company's profile to get their official name/username
-      let companyProfileNames = [user.displayName, user.email].filter(Boolean).map(s => s.trim().toLowerCase());
+      try {
+                // 1. Fetch the company's profile to get their official name/username
+        let companyProfileNames = [];
+        
+                if (user) {
       try {
         const profileSnap = await getDoc(doc(db, 'Club_Bar_Festival_profiles', user.uid));
         if (profileSnap.exists()) {
           const profileData = profileSnap.data();
-          companyProfileNames.push(profileData.name?.trim().toLowerCase());
-          companyProfileNames.push(profileData.username?.trim().toLowerCase());
+              console.log('🏢 Company profile data:', profileData);
+              
+              // Add company name and Instagram username from profile
+              if (profileData.name) {
+                companyProfileNames.push(profileData.name.trim().toLowerCase());
+              }
+              if (profileData.instagramusername) {
+                companyProfileNames.push(profileData.instagramusername.trim().toLowerCase());
+              }
+            } else {
+              console.warn('🏢 Company profile not found for user:', user.uid);
         }
       } catch (e) {
         console.error("Could not fetch company profile", e);
       }
-      companyProfileNames = [...new Set(companyProfileNames)]; // Remove duplicates
-      console.log('🏢 Company profile names loaded:', companyProfileNames);
-
-      // 2. Fetch all future events
-      const companyEventsRef = collection(db, 'company-events');
-      const instagramPostsRef = collection(db, 'Instagram_posts');
-
-      const [companyEventsSnap, instagramPostsSnap] = await Promise.all([
-        getDocs(query(companyEventsRef)),
-        getDocs(query(instagramPostsRef))
-      ]);
-      
-      console.log('🏢 Raw company events found:', companyEventsSnap.docs.length);
-      console.log('🏢 Raw Instagram posts found:', instagramPostsSnap.docs.length);
-      
-      // Log all company events to see what's in the collection
-      companyEventsSnap.docs.forEach(doc => {
-        const data = doc.data();
-        console.log('🏢 Company event in collection:', {
-          id: doc.id,
-          title: data.title,
-          userId: data.userId,
-          companyName: data.companyName,
-          username: data.username,
-          startTime: data.startTime,
-          endTime: data.endTime,
-          eventDate: data.eventDate,
-          eventDates: data.eventDates
-        });
-      });
-
-      const allEvents = [];
-      const now = new Date();
-
-      // 3. Filter events based on company names or userId
-      const processSnapshot = (snapshot) => {
-        snapshot.forEach(doc => {
-          const eventData = { id: doc.id, ...doc.data() };
-          const eventDate = getEventDate(eventData);
-
-          // Debug: Log event details
-          console.log('🏢 Event:', eventData.title || eventData.name, {
-            id: eventData.id,
-            eventDate: eventDate,
-            userId: eventData.userId,
-            currentUserId: user.uid,
-            userIdMatch: eventData.userId === user.uid,
-            isFuture: eventDate && eventDate >= now,
-            rawDate: eventData.eventDate || eventData.timestamp,
-            companyName: eventData.companyName,
-            username: eventData.username
-          });
-
-          const eventUsernames = [
-            eventData.username,
-            eventData.fullname,
-            eventData.email,
-            eventData.companyName
-      ].filter(Boolean).map(s => s.trim().toLowerCase());
-
-          const isMatch = eventData.userId === user.uid || eventUsernames.some(name => companyProfileNames.includes(name));
           
-          // Debug logging for company name matching
-          if (eventData.companyName) {
-            console.log('🏢 Company name matching check:', {
-              eventCompanyName: eventData.companyName,
-              eventCompanyNameLower: eventData.companyName.toLowerCase(),
-              companyProfileNames: companyProfileNames,
-              isMatch: isMatch,
-              userIdMatch: eventData.userId === user.uid
-            });
+          // Also add user's display name and email as fallbacks
+          if (user.displayName) {
+            companyProfileNames.push(user.displayName.trim().toLowerCase());
           }
+          if (user.email) {
+            companyProfileNames.push(user.email.trim().toLowerCase());
+          }
+        } else {
+          // Temporary fallback for testing - search for Karrusel events
+          console.log('🏢 Using temporary fallback: searching for Karrusel events');
+          companyProfileNames = ['karruselfest'];
+        }
+        
+        companyProfileNames = [...new Set(companyProfileNames)]; // Remove duplicates
+        console.log('🏢 Company profile names for filtering:', companyProfileNames);
 
-          if (isMatch) {
-            // Add all matching events to the list (we'll filter by date later)
-            allEvents.push(eventData);
-          }
+        // 2. Fetch all events from all collections
+        const [instagramSnap, companySnap, deletedSnap] = await Promise.all([
+          getDocs(collection(db, "Instagram_posts")),
+          getDocs(collection(db, "company-events")),
+          getDocs(collection(db, "deleted_posts"))
+        ]);
+        
+        console.log('🏢 Instagram posts found:', instagramSnap.docs.length);
+        console.log('🏢 Company events found:', companySnap.docs.length);
+        console.log('🏢 Deleted posts found:', deletedSnap.docs.length);
+        
+        // 3. Merge all events from all collections
+        let allEvents = [
+          ...instagramSnap.docs.map(doc => {
+            const docData = doc.data();
+            
+            // Check if document data contains an ID field that might override doc.id
+            if (docData.id && docData.id !== doc.id) {
+              console.log('⚠️ Document data contains ID field that differs from doc.id:', {
+                docId: doc.id,
+                dataId: docData.id,
+                title: docData.title || docData.name
+              });
+              // Store the original data ID as a backup
+              docData.originalDataId = docData.id;
+            }
+            
+            // Ensure the proper Firestore document ID is used, not any ID from the data
+            const eventData = { ...docData, id: doc.id, collection: 'Instagram_posts' };
+            
+            console.log('🏢 Instagram event added:', doc.id, eventData.title || eventData.name);
+            return eventData;
+          }),
+          ...companySnap.docs.map(doc => {
+            const docData = doc.data();
+            
+            // Check for ID conflicts in company events too
+            if (docData.id && docData.id !== doc.id) {
+              console.log('⚠️ Company event data contains conflicting ID:', {
+                docId: doc.id,
+                dataId: docData.id,
+                title: docData.title || docData.name
+              });
+              docData.originalDataId = docData.id;
+            }
+            
+            const eventData = { ...docData, id: doc.id, collection: 'company-events' };
+            console.log('🏢 Company event added:', doc.id, eventData.title || eventData.name);
+            return eventData;
+          }),
+          ...deletedSnap.docs.map(doc => {
+            const docData = doc.data();
+            
+            // Check for ID conflicts in deleted events too
+            if (docData.id && docData.id !== doc.id) {
+              console.log('⚠️ Deleted event data contains conflicting ID:', {
+                docId: doc.id,
+                dataId: docData.id,
+                title: docData.title || docData.name
+              });
+              docData.originalDataId = docData.id;
+            }
+            
+            const eventData = { ...docData, id: doc.id, collection: 'deleted_posts' };
+            console.log('🏢 Deleted event added:', doc.id, eventData.title || eventData.name);
+            return eventData;
+          })
+        ];
+
+        console.log('🏢 === FILTERING EVENTS ===');
+        console.log('🏢 Total events before filtering:', allEvents.length);
+        
+        // First, let's see all events and their details
+        allEvents.forEach((event, index) => {
+          console.log(`🏢 Event ${index + 1}:`, {
+            title: event.title || event.name,
+            username: event.username,
+            fullname: event.fullname,
+            userId: event.userId,
+            collection: event.collection
+          });
         });
-      };
 
-      processSnapshot(companyEventsSnap);
-      processSnapshot(instagramPostsSnap);
-      
-      const uniqueEvents = Array.from(new Set(allEvents.map(e => e.id))).map(id => allEvents.find(e => e.id === id));
+        // Filter by company ownership for ACTIVE events only (exclude deleted_posts)
+        const companyFilteredEvents = allEvents.filter(event => {
+          // Skip events from deleted_posts collection for active events
+          if (event.collection === 'deleted_posts') {
+            return false;
+          }
 
-      uniqueEvents.sort((a, b) => getEventDate(a) - getEventDate(b));
-      
-      console.log('🏢 === FINAL EVENTS TO DISPLAY ===');
-      console.log('🏢 Total events found:', uniqueEvents.length);
-      
-      // Auto-archive outdated events before setting state
-      const archivedCount = await autoArchiveOutdatedEvents(uniqueEvents);
-      if (archivedCount > 0) {
-        console.log('🔄 Re-fetching events after auto-archiving', archivedCount, 'events');
-        // Re-fetch events after archiving
-        const updatedSnapshot = await getDocs(collection(db, 'Instagram_posts'));
-        const updatedEvents = updatedSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })).filter(event => {
+          // Check if the event belongs to this company by matching username/fullname
           const eventUsernames = [
             event.username,
             event.fullname,
-            event.email,
-            event.companyName
+            event.companyName,
+            event.instagramusername
           ].filter(Boolean).map(s => s.trim().toLowerCase());
-          return event.userId === user.uid || eventUsernames.some(name => companyProfileNames.includes(name));
+
+          // Check if any of the event's usernames match any of the company's profile names
+          const isMyEvent = (user && event.userId === user.uid) || 
+                           eventUsernames.some(eventName => 
+                             companyProfileNames.some(companyName => 
+                               eventName.includes(companyName) || companyName.includes(eventName)
+                             )
+                           );
+          
+          console.log('🏢 Active events ownership check:', event.title || event.name, {
+            eventUserId: event.userId,
+            currentUserId: user ? user.uid : 'No user',
+            eventUsernames: eventUsernames,
+            companyProfileNames: companyProfileNames,
+            isMyEvent: isMyEvent,
+            collection: event.collection,
+            eventType: event.companyName ? 'company-created' : 'instagram-post'
           });
+          
+          return isMyEvent;
+        });
+
+        // Also filter deleted events for this company
+        const companyDeletedEvents = allEvents.filter(event => {
+          if (event.collection !== 'deleted_posts') return false;
+          
+          const eventUsernames = [
+            event.username,
+            event.fullname,
+            event.companyName,
+            event.instagramusername
+          ].filter(Boolean).map(s => s.trim().toLowerCase());
+
+          const isMyDeletedEvent = (user && event.userId === user.uid) || 
+                                  (user && event.deletedBy === user.uid) ||
+                                  eventUsernames.some(eventName => 
+                                    companyProfileNames.some(companyName => 
+                                      eventName.includes(companyName) || companyName.includes(eventName)
+                                    )
+                                  );
+          
+          return isMyDeletedEvent;
+        });
+
+        console.log('🏢 ===== FILTERING RESULTS =====');
+        console.log('🏢 Active events (for My Posts tab):', companyFilteredEvents.length);
+        console.log('🏢 Active events by collection:');
+        const activeByCollection = {};
+        companyFilteredEvents.forEach(event => {
+          activeByCollection[event.collection] = (activeByCollection[event.collection] || 0) + 1;
+          console.log('🏢 - Active Event:', event.title || event.name, 'Collection:', event.collection);
+        });
+        console.log('🏢 Active events summary:', activeByCollection);
         
-        updatedEvents.sort((a, b) => getEventDate(a) - getEventDate(b));
-        setAllEvents(updatedEvents);
-      } else {
-        setAllEvents(uniqueEvents);
+        console.log('🗑️ Deleted events (for Deleted tab):', companyDeletedEvents.length);
+        companyDeletedEvents.forEach(event => {
+          console.log('🗑️ - Deleted Event:', event.title || event.name, 'Collection:', event.collection, 'Deleted:', event.deletedAt ? new Date(event.deletedAt.seconds ? event.deletedAt.seconds * 1000 : event.deletedAt).toLocaleDateString() : 'Unknown');
+        });
+
+        // Sort by date and show all company events
+        companyFilteredEvents.sort((a, b) => getEventDate(a) - getEventDate(b));
+        companyDeletedEvents.sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt)); // Sort deleted by most recent
+
+        console.log('🗑️ Company deleted events:', companyDeletedEvents.length);
+
+        setEvents(companyFilteredEvents);
+        setDeletedEvents(companyDeletedEvents);
+        setLoading(false);
+        
+      } catch (error) {
+        console.error('🏢 Error fetching company events:', error);
+        setEvents([]);
+        setLoading(false);
       }
     };
 
-    fetchCompanyEvents();
+    // Start checking for user
+    checkForUser();
+    
+    // Cleanup function (no timer to clear in this approach)
+    return () => {};
   }, []);
 
-  // Filter events based on showPreviousEvents toggle
-  useEffect(() => {
-    const filterEvents = async () => {
-      const auth = getAuth();
-      const user = auth.currentUser;
-      if (!user) return;
-
-        const now = new Date();
-      let filteredEvents;
-      
-      // Get company profile names (same logic as main fetch) - moved outside conditional blocks
-      let companyProfileNames = [user.displayName, user.email].filter(Boolean).map(s => s.trim().toLowerCase());
-      try {
-        const profileSnap = await getDoc(doc(db, 'Club_Bar_Festival_profiles', user.uid));
-        if (profileSnap.exists()) {
-          const profileData = profileSnap.data();
-          companyProfileNames.push(profileData.name?.trim().toLowerCase());
-          companyProfileNames.push(profileData.username?.trim().toLowerCase());
-        }
-      } catch (e) {
-        console.error("Could not fetch company profile", e);
-      }
-      companyProfileNames = [...new Set(companyProfileNames)]; // Remove duplicates
-      
-      console.log('🏢 Company profile names for filtering:', companyProfileNames);
-      
-      if (showPreviousEvents) {
-        // Show previous events from deleted_posts collection
-        console.log('🏢 Fetching previous events from deleted_posts collection');
-        
-        try {
-          // Clean up duplicates before showing previous events
-          await cleanupDuplicateEvents();
-          
-          const deletedEventsSnapshot = await getDocs(collection(db, 'deleted_posts'));
-          const deletedEvents = deletedEventsSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            isDeleted: true
-          }));
-          
-          // Filter deleted events for this user
-          filteredEvents = deletedEvents.filter(event => {
-            const eventUsernames = [
-              event.username,
-              event.fullname,
-              event.email
-            ].filter(Boolean).map(s => s.trim().toLowerCase());
-            
-            console.log('🏢 Checking deleted event:', event.title, {
-              eventUsernames,
-              userId: event.userId,
-              currentUserId: user.uid,
-              userIdMatch: event.userId === user.uid,
-              usernameMatch: eventUsernames.some(name => companyProfileNames.includes(name))
-            });
-            
-            return event.userId === user.uid || eventUsernames.some(name => companyProfileNames.includes(name));
-          });
-          
-          // Sort by deletion date (newest first) or event date
-          filteredEvents.sort((a, b) => {
-            const dateA = a.deletedAt ? new Date(a.deletedAt.seconds * 1000) : getEventDate(a);
-            const dateB = b.deletedAt ? new Date(b.deletedAt.seconds * 1000) : getEventDate(b);
-            return dateB - dateA;
-          });
-          
-          console.log('🏢 Previous events from deleted_posts:', filteredEvents.length);
-        } catch (error) {
-          console.error('Error fetching deleted events:', error);
-          filteredEvents = [];
-        }
-      } else {
-        // Show only upcoming events (events that haven't completely ended yet)
-        filteredEvents = allEvents.filter(event => {
-          const eventDate = getEventDate(event);
-          const eventDateEnd = getEventDateEnd(event);
-          
-          // If event has an end date, check if end date is in the future
-          // If no end date, check if start date is in the future
-          const dateToCheck = eventDateEnd || eventDate;
-          
-          // Check if this event belongs to the current company
-          const isCompanyEvent = event.userId === user.uid || 
-            (event.companyName && companyProfileNames.some(name => 
-              name && event.companyName.toLowerCase().includes(name.toLowerCase())
-            ));
-          
-          console.log('🏢 Event filter check (Upcoming):', event.title, {
-            startDate: eventDate,
-            endDate: eventDateEnd,
-            dateToCheck: dateToCheck,
-            isUpcoming: dateToCheck && dateToCheck >= now,
-            hasNoDate: !dateToCheck,
-            isCompanyEvent: isCompanyEvent,
-            companyName: event.companyName,
-            userId: event.userId,
-            currentUserId: user.uid,
-            willBeIncluded: (dateToCheck && dateToCheck >= now) || (!dateToCheck && isCompanyEvent)
-          });
-          
-          // Include events that are either:
-          // 1. Upcoming (have a future date)
-          // 2. Belong to this company but have no date set (new events)
-          return (dateToCheck && dateToCheck >= now) || (!dateToCheck && isCompanyEvent);
-          });
-          
-          // Sort upcoming events by date (earliest first), then by engagement
-          filteredEvents.sort((a, b) => {
-            const dateA = getEventDate(a);
-            const dateB = getEventDate(b);
-            if (!dateA && !dateB) return 0;
-            if (!dateA) return 1;
-            if (!dateB) return -1;
-            
-            // First sort by date
-            const dateComparison = dateA.getTime() - dateB.getTime();
-            if (dateComparison !== 0) return dateComparison;
-            
-            // If same date, sort by engagement (likes first, then views)
-            const likesA = a.likescount || 0;
-            const likesB = b.likescount || 0;
-            const viewsA = a.viewscount || 0;
-            const viewsB = b.viewscount || 0;
-            
-            // Compare likes first
-            if (likesA !== likesB) return likesB - likesA; // Higher likes first
-            
-            // If same likes, compare views
-            return viewsB - viewsA; // Higher views first
-          });
-      }
-      
-      console.log('🏢 Filtering events. Show previous:', showPreviousEvents, 'Total available:', showPreviousEvents ? 'from deleted_posts' : allEvents.length, 'Filtered:', filteredEvents.length);
-      setEvents(filteredEvents);
-    };
-
-    filterEvents();
-  }, [allEvents, showPreviousEvents]);
+  if (loading) {
+    return (
+      <div style={{ 
+        padding: '20px', 
+        color: 'white', 
+        background: '#3b1a5c', 
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <div style={{ fontSize: 18, marginBottom: 20 }}>Loading your events...</div>
+        <BottomNavCompany />
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: '100vh', width: '100vw', background: '#3b1a5c', display: 'flex', flexDirection: 'column' }}>
-        {/* Top Bar */}
-        <div style={{ width: '100vw', background: '#0f172a', padding: '22px 0 18px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #334155', margin: 0, position: 'relative', zIndex: 2 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', maxWidth: '448px', padding: '0 18px' }}>
-                <span style={{ display: 'flex', alignItems: 'center', background: '#2a0845', color: '#fff', fontWeight: 700, fontSize: 18, borderRadius: 24, padding: '8px 22px', boxShadow: '0 2px 12px #0004', letterSpacing: 0.5, border: '2px solid #fff', textShadow: '0 2px 8px #3E29F099' }}>
-                    My Posts
-                </span>
-        <div style={{ position: 'relative' }}>
-          <button
-                            onClick={() => setMenuOpen(!menuOpen)}
-                        style={{ 
-                            background: '#2a0845', 
-                            border: '2px solid #fff', 
-                            color: '#ffffff', 
-                            borderRadius: '50%', 
-                            width: 40, 
-                            height: 40, 
+      {/* Original Top Bar */}
+      <div style={{ 
+        width: '100vw', 
+        background: '#0f172a', 
+        padding: '22px 0 18px 0', 
                             display: 'flex', 
                             alignItems: 'center', 
                             justifyContent: 'center', 
-                            cursor: 'pointer', 
-                            boxShadow: '0 2px 12px #0004' 
-                        }}
-                    >
-                        <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                            <circle cx="12" cy="12" r="1" />
-                            <circle cx="19" cy="12" r="1" />
-                            <circle cx="5" cy="12" r="1" />
-            </svg>
-          </button>
-          {menuOpen && (
+        borderBottom: '1px solid #334155', 
+        margin: 0, 
+        position: 'relative', 
+        zIndex: 2 
+      }}>
                                 <div style={{
-                position: 'absolute',
-                                    top: '100%',
-                right: 0,
-                            background: '#2a0845',
-                            border: '2px solid #fff',
-                            borderRadius: 12,
-                            padding: '8px 0',
-                                    marginTop: 8,
-                            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-                            zIndex: 1000,
-                            minWidth: 160
-                                }}>
-                                    <button
-                                        onClick={() => {
-                                            setShowPreviousEvents(false);
-                                            setMenuOpen(false);
-                                        }}
-                                        style={{
-                                            width: '100%',
-                                    padding: '8px 16px',
-                                    background: 'transparent',
-                                            border: 'none',
-                                            color: '#fff',
-                                            textAlign: 'left',
-                                            cursor: 'pointer',
-                                    fontSize: 14,
-                                    fontWeight: 600
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          width: '100%', 
+          maxWidth: '448px', 
+          padding: '0 18px' 
+        }}>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => setShowDeletedEvents(false)}
+              style={{ 
+                background: !showDeletedEvents ? '#2a0845' : 'transparent',
+                color: !showDeletedEvents ? '#fff' : '#2a0845',
+                border: !showDeletedEvents ? '2px solid #fff' : '2px solid #2a0845',
+                fontWeight: 700, 
+                fontSize: 16, 
+                borderRadius: 24, 
+                padding: '8px 16px', 
+                boxShadow: !showDeletedEvents ? '0 2px 12px #0004' : 'none', 
+                letterSpacing: 0.5, 
+                textShadow: !showDeletedEvents ? '0 2px 8px #3E29F099' : 'none',
+                cursor: 'pointer'
               }}
             >
-                                Upcoming Events
-                                    </button>
-              <button
-                                        onClick={() => {
-                                            setShowPreviousEvents(true);
-                                            setMenuOpen(false);
-                                        }}
-                style={{
-                  width: '100%',
-                                    padding: '8px 16px',
-                                    background: 'transparent',
-                  border: 'none',
-                                            color: '#fff',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                                    fontSize: 14,
-                                    fontWeight: 600
-                                        }}
-              >
-                                Previous Events
-              </button>
-            </div>
-          )}
-        </div>
+              My Posts ({events.length})
+            </button>
+            <button
+              onClick={() => setShowDeletedEvents(true)}
+              style={{ 
+                background: showDeletedEvents ? '#dc2626' : 'transparent',
+                color: showDeletedEvents ? '#fff' : '#dc2626',
+                border: showDeletedEvents ? '2px solid #fff' : '2px solid #dc2626',
+                fontWeight: 700, 
+                fontSize: 16, 
+                borderRadius: 24, 
+                padding: '8px 16px', 
+                boxShadow: showDeletedEvents ? '0 2px 12px #0004' : 'none', 
+                letterSpacing: 0.5, 
+                textShadow: showDeletedEvents ? '0 2px 8px #dc262699' : 'none',
+                cursor: 'pointer'
+              }}
+            >
+              Deleted ({deletedEvents.length})
+            </button>
+          </div>
       </div>
         </div>
 
         <div style={{ width: '100%', background: '#3b1a5c', flexGrow: 1, display: 'flex', justifyContent: 'center' }}>
             <div style={{ maxWidth: 448, width: '100%', paddingTop: '18px' }}>
 
-                {/* Event Cards */}
+                
+
+                    {/* Events List */}
                 <div style={{ padding: '0 16px 80px 16px' }}>
-                    {events.map(event => (
-                        <EventCard 
-                            key={event.id} 
-                            event={event} 
-                            navigate={navigate}
-                            showPreviousEvents={showPreviousEvents}
-                        />
-                    ))}
-            </div>
+            {showDeletedEvents ? (
+              // Show deleted events
+              deletedEvents.length === 0 ? (
+                <div style={{ 
+                  textAlign: 'center', 
+                  padding: '40px 20px',
+                  color: 'rgba(255,255,255,0.7)'
+                }}>
+                  <div style={{ fontSize: 18, marginBottom: 10 }}>
+                    No deleted events found
+                  </div>
+                  <div style={{ fontSize: 14 }}>
+                    Deleted events will appear here
+                  </div>
+                </div>
+              ) : (
+                deletedEvents.map((event) => (
+                  <DeletedEventCard 
+                    key={event.id} 
+                    event={event} 
+                    navigate={navigate}
+                    onRepublish={handleRepublish}
+                    onUseAsTemplate={handleUseAsTemplate}
+                  />
+                ))
+              )
+            ) : (
+              // Show active events
+              events.length === 0 ? (
+                <div style={{ 
+                  textAlign: 'center', 
+                  padding: '40px 20px',
+                  color: 'rgba(255,255,255,0.7)'
+                }}>
+                  <div style={{ fontSize: 18, marginBottom: 10 }}>
+                    No events found for your company
+                  </div>
+                  <div style={{ fontSize: 14 }}>
+                    Create your first event to get started!
+                  </div>
+                </div>
+              ) : (
+                events.map((event) => (
+                  <EventCard 
+                    key={event.id} 
+                    event={event} 
+                    navigate={navigate}
+                    showPreviousEvents={false}
+                  />
+                ))
+              )
+            )}
+        </div>
             </div>
         </div>
         <BottomNavCompany />
