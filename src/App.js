@@ -21,7 +21,7 @@ import BottomNavCompany from './BottomNavCompany';
 import AuthPageCompany from './AuthPageCompany';
 import CreateCompanyEvent from './CreateCompanyEvent';
 import TicketConfiguration from './TicketConfiguration';
-import EventDetailPageCompany from "./EventDetailPageCompany";
+
 import ChatPagePrivate from "./ChatPagePrivate";
 import ChatPageCompany from "./ChatPageCompany";
 import ProfileSetup from './ProfileSetup';
@@ -797,9 +797,13 @@ function AuthPage() {
 
 
 function Home() {
+  const [showSearchModal, setShowSearchModal] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState('');
+
   React.useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
+
   return (
     <div style={{ minHeight: '100vh', width: '100vw', background: '#0f172a' }}>
       <div style={{ width: '100vw', background: '#0f172a', padding: '22px 0 18px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid #334155', margin: 0, position: 'relative', zIndex: 2 }}>
@@ -810,7 +814,10 @@ function Home() {
             <svg style={{ width: 18, height: 18, color: '#b3e0ff', marginLeft: 6 }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button style={{ background: '#2a0845', border: '2px solid #fff', color: '#ffffff', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 12px #0004' }}>
+            <button 
+              onClick={() => setShowSearchModal(true)}
+              style={{ background: '#2a0845', border: '2px solid #fff', color: '#ffffff', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 12px #0004' }}
+            >
               <svg style={{ width: 18, height: 18 }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
             </button>
             <button style={{ background: '#2a0845', border: '2px solid #fff', color: '#ffffff', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 12px #0004' }}>
@@ -822,10 +829,100 @@ function Home() {
       <div style={{ width: '100vw', background: '#3b1a5c', minHeight: '90vh' }}>
         <div style={{ maxWidth: 448, margin: '0 auto' }}>
             <div style={{ padding: '18px 0 80px 0', flex: 1, overflowY: 'auto' }}>
-          <EventsList />
+          <EventsList searchQuery={searchQuery} />
       </div>
         </div>
       </div>
+
+      {/* Search Modal */}
+      {showSearchModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          paddingTop: '20vh'
+        }}>
+          <div style={{
+            background: '#1f2937',
+            borderRadius: '12px',
+            padding: '24px',
+            width: '90%',
+            maxWidth: '400px',
+            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.5)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: '600', margin: 0 }}>Search Events</h3>
+              <button
+                onClick={() => setShowSearchModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#9ca3af',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  padding: '0',
+                  width: '30px',
+                  height: '30px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{ position: 'relative', marginBottom: '16px' }}>
+              <svg 
+                style={{ 
+                  position: 'absolute', 
+                  left: '12px', 
+                  top: '50%', 
+                  transform: 'translateY(-50%)', 
+                  width: '18px', 
+                  height: '18px', 
+                  color: '#9ca3af' 
+                }} 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                viewBox="0 0 24 24"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="M21 21l-4.35-4.35" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search by event title or company name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px 12px 12px 40px',
+                  borderRadius: '8px',
+                  border: '1px solid #374151',
+                  background: '#374151',
+                  color: '#fff',
+                  fontSize: '16px',
+                  outline: 'none'
+                }}
+                autoFocus
+              />
+            </div>
+            
+            <div style={{ color: '#9ca3af', fontSize: '14px', textAlign: 'center' }}>
+              {searchQuery.length > 0 ? `Searching for "${searchQuery}"...` : 'Type to search events and companies'}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1090,8 +1187,9 @@ function App() {
     return () => unsub();
   }, [userType, setProfileLoaded, setProfileComplete, location.pathname]);
 
-  const hideNavRoutes = ['/', '/login', '/signup', '/profile-setup', '/favorites-setup', '/select-type', '/company-setup', '/company-setup-final', '/company-verification-setup', '/company-verification', '/verification-pending', '/company-login', '/company-signup', '/company-events'];
-  const shouldShowBottomNav = !hideNavRoutes.includes(location.pathname) && !location.pathname.startsWith('/company-event/') && !location.pathname.startsWith('/company-deleted-event/') && !location.pathname.startsWith('/event/');
+  const hideNavRoutes = ['/', '/login', '/signup', '/profile-setup', '/favorites-setup', '/select-type', '/company-setup', '/company-setup-final', '/company-verification-setup', '/company-verification', '/verification-pending', '/company-login', '/company-signup'];
+  const shouldShowBottomNav = !hideNavRoutes.includes(location.pathname) && !location.pathname.startsWith('/company-deleted-event/') && !location.pathname.startsWith('/event/');
+  const shouldShowCompanyNav = location.pathname === '/company-events' || location.pathname.startsWith('/company-create-event') || location.pathname === '/ticket-configuration';
 
   if (checkingProfile) {
     return <div className="flex justify-center items-center min-h-screen text-white">Loading profile...</div>;
@@ -1132,7 +1230,7 @@ function App() {
               <Route path="/bars" element={<BarsList />} />
               <Route path="/event/:id" element={<EventDetailPage />} />
               <Route path="/company-events" element={<EventsListCompany />} />
-              <Route path="/company-event/:id" element={<EventDetailPageCompany />} />
+  
               <Route path="/company-deleted-event/:id" element={<EventDetailPageDeletedCompany />} />
               <Route path="/chats" element={
                 userType === 'company' ? 
@@ -1145,8 +1243,11 @@ function App() {
               <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-        {shouldShowBottomNav && (() => {
-          console.log('🔍 App.js: Navigation check - userType:', userType, 'shouldShowBottomNav:', shouldShowBottomNav);
+        {(shouldShowBottomNav || shouldShowCompanyNav) && (() => {
+          console.log('🔍 App.js: Navigation check - userType:', userType, 'shouldShowBottomNav:', shouldShowBottomNav, 'shouldShowCompanyNav:', shouldShowCompanyNav);
+          if (shouldShowCompanyNav) {
+            return <BottomNavCompany unreadCount={unreadCount} />;
+          }
           return userType === 'company' ? <BottomNavCompany unreadCount={unreadCount} /> : <BottomNav unreadCount={unreadCount} />;
         })()}
     </ThemeProvider>

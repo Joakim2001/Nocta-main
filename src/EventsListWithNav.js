@@ -16,6 +16,8 @@ function EventsListWithNav() {
   const [userFavorites, setUserFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     const loadUserFavorites = async () => {
@@ -58,12 +60,12 @@ function EventsListWithNav() {
     
     switch (activeTab) {
       case 'favourites':
-        return <EventsList filterFavorites={userFavorites} />;
+        return <EventsList filterFavorites={userFavorites} searchQuery={searchQuery} />;
       case 'trending':
-        return <EventsList showOnlyTrending={true} />;
+        return <EventsList showOnlyTrending={true} searchQuery={searchQuery} />;
       case 'explore':
       default:
-        return <EventsList excludeFavorites={userFavorites} />;
+        return <EventsList excludeFavorites={userFavorites} searchQuery={searchQuery} />;
     }
   };
 
@@ -129,19 +131,22 @@ function EventsListWithNav() {
             </svg>
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button style={{ 
-              background: '#2a0845', 
-              border: '2px solid #fff', 
-              color: '#ffffff', 
-              borderRadius: '50%', 
-              width: 40, 
-              height: 40, 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              cursor: 'pointer', 
-              boxShadow: '0 2px 12px #0004' 
-            }}>
+            <button 
+              onClick={() => setShowSearchModal(true)}
+              style={{ 
+                background: '#2a0845', 
+                border: '2px solid #fff', 
+                color: '#ffffff', 
+                borderRadius: '50%', 
+                width: 40, 
+                height: 40, 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                cursor: 'pointer', 
+                boxShadow: '0 2px 12px #0004' 
+              }}
+            >
               <svg style={{ width: 18, height: 18 }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <circle cx="11" cy="11" r="8" />
                 <path d="M21 21l-4.35-4.35" />
@@ -271,6 +276,96 @@ function EventsListWithNav() {
         onClose={() => setIsCalendarOpen(false)}
         eventType="club"
       />
+
+      {/* Search Modal */}
+      {showSearchModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          paddingTop: '20vh'
+        }}>
+          <div style={{
+            background: '#1f2937',
+            borderRadius: '12px',
+            padding: '24px',
+            width: '90%',
+            maxWidth: '400px',
+            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.5)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: '600', margin: 0 }}>Search Events</h3>
+              <button
+                onClick={() => setShowSearchModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#9ca3af',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  padding: '0',
+                  width: '30px',
+                  height: '30px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{ position: 'relative', marginBottom: '16px' }}>
+              <svg 
+                style={{ 
+                  position: 'absolute', 
+                  left: '12px', 
+                  top: '50%', 
+                  transform: 'translateY(-50%)', 
+                  width: '18px', 
+                  height: '18px', 
+                  color: '#9ca3af' 
+                }} 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                viewBox="0 0 24 24"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="M21 21l-4.35-4.35" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search by event title or company name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px 12px 12px 40px',
+                  borderRadius: '8px',
+                  border: '1px solid #374151',
+                  background: '#374151',
+                  color: '#fff',
+                  fontSize: '16px',
+                  outline: 'none'
+                }}
+                autoFocus
+              />
+            </div>
+            
+            <div style={{ color: '#9ca3af', fontSize: '14px', textAlign: 'center' }}>
+              {searchQuery.length > 0 ? `Searching for "${searchQuery}"...` : 'Type to search events and companies'}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

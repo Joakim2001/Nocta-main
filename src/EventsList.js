@@ -95,12 +95,54 @@ function isStoragePath(val) {
 }
 
 function getEventDate(event) {
+  // Debug logging for company-created events
+  if (event.source === 'company-created') {
+    console.log('📅 getEventDate - Company event:', {
+      eventId: event.id,
+      title: event.title,
+      eventDate: event.eventDate,
+      eventDateType: typeof event.eventDate,
+      eventDateConstructor: event.eventDate?.constructor?.name,
+      eventDateToString: event.eventDate?.toString(),
+      hasToDateMethod: typeof event.eventDate?.toDate === 'function',
+      toDateResult: typeof event.eventDate?.toDate === 'function' ? 'attempting...' : 'no method',
+      timestamp: event.timestamp,
+      timestampType: typeof event.timestamp,
+      createdAt: event.createdAt
+    });
+  }
+  
   if (event.eventDate) {
-    if (typeof event.eventDate.toDate === 'function') {
-      return event.eventDate.toDate();
+    if (event.source === 'company-created') {
+      console.log('📅 Company event - eventDate exists, checking toDate method:', typeof event.eventDate.toDate);
     }
+    
+    if (typeof event.eventDate.toDate === 'function') {
+      try {
+        const date = event.eventDate.toDate();
+        if (event.source === 'company-created') {
+          console.log('📅 Company event date (Firestore Timestamp):', date, 'Valid:', !isNaN(date.getTime()));
+        }
+        if (!isNaN(date.getTime())) {
+          return date;
+        }
+      } catch (error) {
+        if (event.source === 'company-created') {
+          console.log('📅 Company event - Error calling toDate():', error);
+        }
+      }
+    }
+    
+    // Fallback to direct Date parsing
     const d = new Date(event.eventDate);
-    if (!isNaN(d.getTime())) return d;
+    if (!isNaN(d.getTime())) {
+      if (event.source === 'company-created') {
+        console.log('📅 Company event date (Date object fallback):', d);
+      }
+      return d;
+    } else if (event.source === 'company-created') {
+      console.log('📅 Company event - Invalid Date object from eventDate');
+    }
   }
   if (event.timestamp) {
     if (typeof event.timestamp === 'string') {
@@ -111,6 +153,10 @@ function getEventDate(event) {
       const d = new Date(event.timestamp.seconds * 1000);
       if (!isNaN(d.getTime())) return d;
     }
+  }
+  
+  if (event.source === 'company-created') {
+    console.log('📅 Company event - NO VALID DATE FOUND');
   }
   return null;
 }
@@ -244,7 +290,7 @@ function EventCard({ event, imgError, setImgError, navigate }) {
   const eventDateEnd = getEventDateEnd(event);
   const dateLabel = formatDateLabel(eventDate, eventDateEnd);
   const timeLabel = formatTimeLabel(eventDate);
-  const clubName = event.fullname || event.venue || event.club || event.username || "Unknown";
+  const clubName = event.companyName || event.fullname || event.venue || event.club || event.username || "Unknown";
   return (
     <div
       key={event.id}
@@ -398,24 +444,45 @@ function EventCard({ event, imgError, setImgError, navigate }) {
 }
 
 function isClubOrFestival(event) {
-  const name = (event.fullname || event.username || '').toLowerCase();
+  // Check all possible name fields including companyName for company-created events
+  const names = [
+    event.companyName,
+    event.fullname, 
+    event.username,
+    event.venue,
+    event.club
+  ].filter(Boolean).map(name => name.toLowerCase());
   
   // Debug: Log events that might be clubs
-  if (name.includes('karrusel') || name.includes('karrussel')) {
+  if (names.some(name => name.includes('karrusel') || name.includes('karrussel'))) {
     console.log('🔍 Debug - Event that might be a club:', {
       eventId: event.id,
+      companyName: event.companyName,
       fullname: event.fullname,
       username: event.username,
-      name: name,
-      isInClubList: CLUB_FESTIVAL_NAMES.map(n => n.toLowerCase()).includes(name),
+      venue: event.venue,
+      club: event.club,
+      names: names,
+      isInClubList: names.some(eventName => 
+        CLUB_FESTIVAL_NAMES.map(n => n.toLowerCase()).some(clubName => 
+          eventName.includes(clubName) || clubName.includes(eventName)
+        )
+      ),
       clubList: CLUB_FESTIVAL_NAMES.map(n => n.toLowerCase())
     });
   }
   
-  return CLUB_FESTIVAL_NAMES.map(n => n.toLowerCase()).includes(name);
+  // Check if any of the names match the club/festival list
+  // Use flexible matching - check if any club name is contained in the event names
+  const clubNames = CLUB_FESTIVAL_NAMES.map(n => n.toLowerCase());
+  return names.some(eventName => 
+    clubNames.some(clubName => 
+      eventName.includes(clubName) || clubName.includes(eventName)
+    )
+  );
 }
 
-function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites }) {
+function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searchQuery }) {
   const [events, setEvents] = useState([]);
   const [imgError, setImgError] = useState({});
   const [loading, setLoading] = useState(true);
@@ -426,45 +493,37 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites }) {
       setLoading(true);
       try {
       const now = new Date();
-      // Fetch Instagram_posts
-      const snap1 = await getDocs(query(collection(db, "Instagram_posts")));
-      // Fetch company-events
-      const snap2 = await getDocs(query(collection(db, "company-events")));
-      // Merge and filter
-      let allEvents = [
-        ...snap1.docs.map(doc => ({ id: doc.id, ...doc.data() })),
-        ...snap2.docs.map(doc => ({ id: doc.id, ...doc.data() })),
-      ];
+      // Fetch all events from Instagram_posts (includes both scraped and company-created)
+      const snap = await getDocs(query(collection(db, "Instagram_posts")));
+      let allEvents = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
       // Filter out events that companies have deleted
       allEvents = await filterOutDeletedEvents(allEvents);
 
-      // TEMPORARILY DISABLED: Check for outdated events and archive them
-      // The auto-archiving was too aggressive and moving current events
-      // console.log('🔄 Checking for outdated events to archive...');
-      // let archivedCount = 0;
-      // for (const event of allEvents) {
-      //   const wasArchived = await checkAndArchiveEvent(event);
-      //   if (wasArchived) {
-      //     archivedCount++;
-      //   }
-      // }
-      // if (archivedCount > 0) {
-      //   console.log('✅ Archived', archivedCount, 'outdated events, re-fetching...');
-      //   // Re-fetch events after archiving
-      //   const updatedSnap1 = await getDocs(query(collection(db, "Instagram_posts")));
-      //   const updatedSnap2 = await getDocs(query(collection(db, "company-events")));
-      //   allEvents = [
-      //     ...updatedSnap1.docs.map(doc => ({ id: doc.id, ...doc.data() })),
-      //     ...updatedSnap2.docs.map(doc => ({ id: doc.id, ...doc.data() })),
-      //   ];
-      // }
+      console.log('📊 EventsList - Total events fetched:', allEvents.length);
+      console.log('📊 EventsList - Company-created events:', allEvents.filter(e => e.source === 'company-created').length);
+      console.log('📊 EventsList - Instagram-scraped events:', allEvents.filter(e => e.source !== 'company-created').length);
 
       // Filter for current/future events
       allEvents = allEvents
         .filter(event => {
           const start = getEventDate(event);
           const end = getEventDateEnd ? getEventDateEnd(event) : null;
+          
+          // Debug company events in date filter
+          if (event.source === 'company-created') {
+            console.log('📅 Date filter check for company event:', {
+              title: event.title,
+              start: start,
+              startTime: start?.getTime(),
+              end: end,
+              now: now,
+              nowTime: now.getTime(),
+              comparison: start ? `${start.getTime()} >= ${now.getTime()} = ${start.getTime() >= now.getTime()}` : 'no start date',
+              passes: start ? (end ? now <= end : start >= now) : false
+            });
+          }
+          
           if (!start) return false;
           // Show if event is ongoing or in the future
           if (end) {
@@ -473,6 +532,17 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites }) {
           return start >= now;
         })
         .filter(isClubOrFestival); // Only show club/festival events
+
+      // Debug: Check if company events pass the club filter
+      const companyEventsAfterFilter = allEvents.filter(e => e.source === 'company-created');
+      console.log('🏷️ Company events after club filter:', companyEventsAfterFilter.length, companyEventsAfterFilter.map(e => ({
+        title: e.title,
+        source: e.source,
+        isClub: isClubOrFestival(e),
+        companyName: e.companyName,
+        fullname: e.fullname,
+        username: e.username
+      })));
 
       // Calculate top 3 events by engagement (for trending tab) - do this BEFORE any filtering
       const topTrendingEvents = allEvents
@@ -491,20 +561,82 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites }) {
         .slice(0, 3) // Take top 3
         .map(event => ({ ...event, trending: true })); // Mark as trending
 
+      // Search filter function
+      const applySearchFilter = (eventsList) => {
+        if (!searchQuery || searchQuery.trim() === '') {
+          return eventsList;
+        }
+        
+        const query = searchQuery.toLowerCase().trim();
+        return eventsList.filter(event => {
+          // Search in event title/caption
+          const title = (event.title || event.caption || '').toLowerCase();
+          if (title.includes(query)) return true;
+          
+          // Search in company name/username/fullname
+          const companyName = (event.companyName || '').toLowerCase();
+          const username = (event.username || '').toLowerCase();
+          const fullname = (event.fullname || '').toLowerCase();
+          const venue = (event.venue || '').toLowerCase();
+          const club = (event.club || '').toLowerCase();
+          
+          return companyName.includes(query) || 
+                 username.includes(query) || 
+                 fullname.includes(query) ||
+                 venue.includes(query) ||
+                 club.includes(query);
+        });
+      };
+
       // Apply trending filter if requested
       if (showOnlyTrending) {
         // Show only the top 3 events by engagement
-        setEvents(topTrendingEvents);
+        const filteredTrendingEvents = applySearchFilter(topTrendingEvents);
+        setEvents(filteredTrendingEvents);
         return; // Exit early for trending tab
       }
 
       // Apply favorites filter if provided (for favorites tab)
       if (filterFavorites && filterFavorites.length > 0) {
         const favoriteNames = filterFavorites.map(fav => fav.name.toLowerCase());
+        console.log('🔍 EventsList - Favorites filter:', {
+          favoriteNames,
+          totalEvents: allEvents.length
+        });
+        
         const favoriteEvents = allEvents.filter(event => {
           const eventFullname = (event.fullname || '').toLowerCase();
           const eventUsername = (event.username || '').toLowerCase();
-          return favoriteNames.includes(eventFullname) || favoriteNames.includes(eventUsername);
+          const eventCompanyName = (event.companyName || '').toLowerCase();
+          const eventVenue = (event.venue || '').toLowerCase();
+          const eventClub = (event.club || '').toLowerCase();
+          
+          // Debug company-created events specifically
+          if (event.companyName) {
+            console.log('🔍 EventsList - Company event check:', {
+              eventId: event.id,
+              eventTitle: event.title,
+              companyName: event.companyName,
+              companyNameLower: eventCompanyName,
+              favoriteNames,
+              matches: {
+                companyName: favoriteNames.includes(eventCompanyName),
+                fullname: favoriteNames.includes(eventFullname),
+                username: favoriteNames.includes(eventUsername),
+                venue: favoriteNames.includes(eventVenue),
+                club: favoriteNames.includes(eventClub)
+              }
+            });
+          }
+          
+          // Use flexible matching - check if favorite names are contained in event names or vice versa
+          const eventNames = [eventFullname, eventUsername, eventCompanyName, eventVenue, eventClub].filter(Boolean);
+          
+          return favoriteNames.some(favName => 
+            eventNames.some(eventName => 
+              eventName.includes(favName) || favName.includes(eventName)
+            )
+          );
         });
         
         // Mark favorite events as trending if they're also in the top trending events
@@ -516,7 +648,28 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites }) {
           return event;
         });
         
-        setEvents(favoriteEventsWithTrending);
+        // Sort favorites by date before displaying
+        favoriteEventsWithTrending.sort((a, b) => {
+          const dateA = getEventDate(a);
+          const dateB = getEventDate(b);
+          
+          // Debug sorting for favorites (especially company events)
+          if (a.source === 'company-created' || b.source === 'company-created') {
+            console.log('🔄 Favorites sorting comparison:', {
+              eventA: { title: a.title || a.caption?.substring(0, 20), source: a.source, date: dateA, dateTime: dateA?.getTime() },
+              eventB: { title: b.title || b.caption?.substring(0, 20), source: b.source, date: dateB, dateTime: dateB?.getTime() },
+              result: !dateA && !dateB ? 0 : !dateA ? 1 : !dateB ? -1 : dateA.getTime() - dateB.getTime()
+            });
+          }
+          
+          if (!dateA && !dateB) return 0;
+          if (!dateA) return 1;
+          if (!dateB) return -1;
+          return dateA.getTime() - dateB.getTime(); // Sort by earliest date first
+        });
+        
+        const filteredFavoriteEvents = applySearchFilter(favoriteEventsWithTrending);
+        setEvents(filteredFavoriteEvents);
         return; // Exit early for favorites tab
       } else if (filterFavorites) {
         // If filterFavorites is provided but empty, show no events
@@ -541,7 +694,19 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites }) {
           if (favoriteNames.length > 0) {
             const eventFullname = (event.fullname || '').toLowerCase();
             const eventUsername = (event.username || '').toLowerCase();
-            if (favoriteNames.includes(eventFullname) || favoriteNames.includes(eventUsername)) {
+            const eventCompanyName = (event.companyName || '').toLowerCase();
+            const eventVenue = (event.venue || '').toLowerCase();
+            const eventClub = (event.club || '').toLowerCase();
+            
+            // Use flexible matching for exclusion too
+            const eventNames = [eventFullname, eventUsername, eventCompanyName, eventVenue, eventClub].filter(Boolean);
+            const isMatchingFavorite = favoriteNames.some(favName => 
+              eventNames.some(eventName => 
+                eventName.includes(favName) || favName.includes(eventName)
+              )
+            );
+            
+            if (isMatchingFavorite) {
               return false;
             }
           }
@@ -551,6 +716,16 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites }) {
         .sort((a, b) => {
           const dateA = getEventDate(a);
           const dateB = getEventDate(b);
+          
+          // Debug sorting for company events
+          if (a.source === 'company-created' || b.source === 'company-created') {
+            console.log('🔄 Sorting comparison:', {
+              eventA: { title: a.title, source: a.source, date: dateA },
+              eventB: { title: b.title, source: b.source, date: dateB },
+              result: !dateA && !dateB ? 0 : !dateA ? 1 : !dateB ? -1 : dateA.getTime() - dateB.getTime()
+            });
+          }
+          
           if (!dateA && !dateB) return 0;
           if (!dateA) return 1;
           if (!dateB) return -1;
@@ -558,7 +733,30 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites }) {
         });
       
       // For explore tab, show events that are neither trending nor favorites
-      setEvents(exploreEvents);
+      const filteredExploreEvents = applySearchFilter(exploreEvents);
+      
+      // Debug: Log final events being set
+      console.log('📋 Final events being displayed:', filteredExploreEvents.length);
+      const companyEvents = filteredExploreEvents.filter(e => e.source === 'company-created');
+      console.log('📋 Company events in final list:', companyEvents.length, companyEvents.map(e => ({
+        title: e.title,
+        date: getEventDate(e),
+        source: e.source
+      })));
+      
+      // Debug: Show first few and last few events to see ordering
+      console.log('📋 First 3 events (chronological order):', filteredExploreEvents.slice(0, 3).map(e => ({
+        title: e.title || e.caption?.substring(0, 30),
+        date: getEventDate(e),
+        source: e.source
+      })));
+      console.log('📋 Last 3 events (chronological order):', filteredExploreEvents.slice(-3).map(e => ({
+        title: e.title || e.caption?.substring(0, 30),
+        date: getEventDate(e),
+        source: e.source
+      })));
+      
+      setEvents(filteredExploreEvents);
       } catch (error) {
         logger.error('Error fetching events:', error);
         setEvents([]);
@@ -567,7 +765,7 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites }) {
       }
     }
     fetchEvents();
-  }, [filterFavorites, showOnlyTrending, excludeFavorites]);
+  }, [filterFavorites, showOnlyTrending, excludeFavorites, searchQuery]);
 
   return (
     <>
