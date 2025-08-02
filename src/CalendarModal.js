@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
 import { collection, getDocs, query } from 'firebase/firestore';
 import { CLUB_FESTIVAL_NAMES } from './club_festival_names';
+import { filterOutDeletedEvents } from './utils/eventFilters';
 
 function CalendarModal({ isOpen, onClose, eventType = 'all' }) {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -47,6 +48,9 @@ function CalendarModal({ isOpen, onClose, eventType = 'all' }) {
         ...snap1.docs.map(doc => ({ id: doc.id, ...doc.data() })),
         ...snap2.docs.map(doc => ({ id: doc.id, ...doc.data() })),
       ];
+
+      // Filter out events that companies have deleted
+      allEvents = await filterOutDeletedEvents(allEvents);
 
       // Filter events based on type
       if (eventType === 'bar') {

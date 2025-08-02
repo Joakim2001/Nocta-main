@@ -21,7 +21,8 @@ export const CLUB_FESTIVAL_NAMES = [
   "Hangaren",
   "Module",
   "Tyrolia Bier Klub",
-  "Sigurd Klubben",
+  "Sigurd.klubben",
+  "Sigurd CPH",
   "Klub Werkstatt",
   "Aveant",
   "project_cph"
