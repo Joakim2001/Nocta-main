@@ -289,10 +289,8 @@ function ProfileSetup() {
   const [country, setCountry] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [openDropdown, setOpenDropdown] = useState(null); // 'gender' | 'dob' | null
-  const [dobInput, setDobInput] = useState('');
+  const [openDropdown, setOpenDropdown] = useState(null); // 'gender' | null
   const [authReady, setAuthReady] = useState(false);
-  const dobRef = React.useRef();
   const navigate = useNavigate();
   const { profileComplete } = useProfile();
 
@@ -338,9 +336,8 @@ function ProfileSetup() {
   // Close dropdown on click outside
   React.useEffect(() => {
     function handleClickOutside(event) {
-      if (dobRef.current && !dobRef.current.contains(event.target)) {
-        setOpenDropdown(null);
-      }
+      // Only handle gender dropdown now
+      setOpenDropdown(null);
     }
     if (openDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
@@ -566,106 +563,35 @@ function ProfileSetup() {
               </div>
             )}
           </div>
-          {/* Date of Birth Dropdown Input */}
-          <div style={{ width: '100%', position: 'relative', marginBottom: 0 }} ref={dobRef}>
-            <div
-              onClick={() => {
-                setDobInput(dob);
-                setOpenDropdown('dob');
-              }}
-              style={{
-                width: '100%',
-                padding: '14px',
-                borderRadius: 12,
-                border: 'none',
-                fontSize: 16,
-                background: 'rgba(255,255,255,0.12)',
-                color: dob ? 'white' : '#ccc',
-                outline: 'none',
-                boxShadow: '0 2px 8px #a445ff22',
-                marginBottom: 0,
-                cursor: 'pointer',
-                textAlign: 'left',
-                position: 'relative',
-                zIndex: 1,
-              }}
-            >
-              {dob ? dob : 'Date of Birth'}
-            </div>
-            {openDropdown === 'dob' && (
-              <div style={{
-                position: 'absolute',
-                top: '110%',
-                left: 0,
-                width: '100%',
-                background: 'rgba(30,30,50,0.98)',
-                borderRadius: 12,
-                boxShadow: '0 4px 24px #3E29F055',
-                padding: 16,
-                zIndex: 10,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-              }}>
-                <label style={{ color: '#ccc', fontSize: 14, marginBottom: 6 }}>Enter date as dd-mm-yyyy</label>
-                <input
-                  type="text"
-                  value={dobInput}
-                  onChange={e => {
-                    let v = e.target.value.replace(/[^0-9]/g, '');
-                    if (v.length > 8) v = v.slice(0, 8);
-                    let formatted = v;
-                    if (v.length > 4) formatted = v.slice(0,2) + '-' + v.slice(2,4) + '-' + v.slice(4);
-                    else if (v.length > 2) formatted = v.slice(0,2) + '-' + v.slice(2);
-                    setDobInput(formatted);
-                  }}
-                  placeholder="dd-mm-yyyy"
-                  autoFocus
-                  maxLength={10}
-                  pattern="^(0[1-9]|[12][0-9]|3[01])-(0[1-9]|1[0-2])-[0-9]{4}$"
-                  title="Please enter date as dd-mm-yyyy"
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderRadius: 8,
-                    border: 'none',
-                    fontSize: 16,
-                    background: 'rgba(255,255,255,0.18)',
-                    color: 'white',
-                    outline: 'none',
-                    marginBottom: 0,
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      handleSetDob(dobInput);
-                      setOpenDropdown(null);
-                    }
-                  }}
-                  onBlur={() => setOpenDropdown(null)}
-                />
-                <button
-                  type="button"
-                  onMouseDown={e => {
-                    e.preventDefault(); // extra safety
-                    handleSetDob(dobInput);
-                    setOpenDropdown(null);
-                  }}
-                  style={{
-                    marginTop: 8,
-                    padding: '8px 18px',
-                    borderRadius: 20,
-                    background: 'linear-gradient(90deg, #F941F9 0%, #3E29F0 100%)',
-                    color: 'white',
-                    fontWeight: 600,
-                    fontSize: 15,
-                    border: 'none',
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 8px #a445ff22',
-                  }}
-                >OK</button>
-              </div>
-            )}
-          </div>
+          {/* Date of Birth Direct Input */}
+          <input
+            type="text"
+            value={dob}
+            onChange={e => {
+              let v = e.target.value.replace(/[^0-9]/g, '');
+              if (v.length > 8) v = v.slice(0, 8);
+              let formatted = v;
+              if (v.length > 4) formatted = v.slice(0,2) + '-' + v.slice(2,4) + '-' + v.slice(4);
+              else if (v.length > 2) formatted = v.slice(0,2) + '-' + v.slice(2);
+              handleSetDob(formatted);
+            }}
+            placeholder="Date of Birth (dd-mm-yyyy)"
+            maxLength={10}
+            pattern="^(0[1-9]|[12][0-9]|3[01])-(0[1-9]|1[0-2])-[0-9]{4}$"
+            title="Please enter date as dd-mm-yyyy"
+            style={{
+              width: '100%',
+              padding: '14px',
+              borderRadius: 12,
+              border: 'none',
+              fontSize: 16,
+              background: 'rgba(255,255,255,0.12)',
+              color: dob ? 'white' : '#ccc',
+              outline: 'none',
+              boxShadow: '0 2px 8px #a445ff22',
+              marginBottom: 0,
+            }}
+          />
           <Select
             options={countryOptions}
             value={country}

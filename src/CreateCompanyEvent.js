@@ -145,7 +145,17 @@ function CreateCompanyEvent() {
         endTime,
         createdAt: serverTimestamp(),
         ticketConfiguration: ticketConfiguration || null,
-        ticketType: ticketOption || "No ticket"
+        ticketType: ticketOption || "No ticket",
+        viewscount: 0,
+        likescount: 0,
+        // Source tracking fields
+        source: 'company-created',
+        createdBy: user.uid,
+        // Additional fields to match Instagram posts structure
+        fullname: companyName || "Unknown Company",
+        username: companyName ? companyName.toLowerCase().replace(/\s+/g, '') : "unknown",
+        caption: description,
+        timestamp: serverTimestamp()
       };
 
       if (dateMode === 'simple') {
@@ -162,7 +172,7 @@ function CreateCompanyEvent() {
         }
       }
 
-      await addDoc(collection(db, 'company-events'), eventData);
+      await addDoc(collection(db, 'Instagram_posts'), eventData);
       navigate('/company-events');
 
     } catch (error) {

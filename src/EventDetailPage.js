@@ -1066,6 +1066,121 @@ export default function EventDetailPage() {
           </div>
         )}
 
+        {/* Ticket Configuration Card - Show for Company Views */}
+        {isCompanyView && (event?.ticketConfiguration || event?.ticketType) && (
+          <div style={{ background: '#fff', color: '#1f2937', borderRadius: 12, padding: '16px', margin: '16px 0', boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004' }}>
+            <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#6b21a8', marginBottom: '12px' }}>TICKET CONFIGURATION</h2>
+            
+            {event?.ticketType === 'No ticket' ? (
+              <div style={{ color: '#6b7280', fontStyle: 'italic' }}>
+                No tickets required for this event
+              </div>
+            ) : event?.ticketType === 'Free ticket' ? (
+              <div>
+                <div style={{ fontWeight: 600, color: '#059669', marginBottom: '4px' }}>Free Event</div>
+                <div style={{ color: '#6b7280', fontSize: '14px' }}>Attendees can join for free</div>
+              </div>
+            ) : event?.ticketConfiguration?.pricingTiers ? (
+              <div>
+                <div style={{ marginBottom: '12px' }}>
+                  <div style={{ fontWeight: 600, marginBottom: '4px' }}>Pricing Tiers:</div>
+                  {event.ticketConfiguration.pricingTiers.map((tier, index) => (
+                    <div key={index} style={{ 
+                      background: '#f9fafb', 
+                      border: '1px solid #e5e7eb', 
+                      borderRadius: '8px', 
+                      padding: '12px', 
+                      marginBottom: '8px' 
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span style={{ fontWeight: 600, color: '#1f2937' }}>{tier.name}</span>
+                        <span style={{ fontWeight: 600, color: '#6b21a8' }}>
+                          {tier.price ? `${tier.price} DKK` : 'Free'}
+                        </span>
+                      </div>
+                      {tier.description && (
+                        <div style={{ color: '#6b7280', fontSize: '14px', marginBottom: '4px' }}>
+                          {tier.description}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280' }}>
+                        <span>Quantity: {tier.quantity || 'Unlimited'}</span>
+                        {tier.availableUntil && <span>Until: {new Date(tier.availableUntil).toLocaleDateString()}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                {(event.ticketConfiguration.totalQuantity || event.ticketConfiguration.maxTicketsPerPerson) && (
+                  <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '12px', fontSize: '14px', color: '#6b7280' }}>
+                    {event.ticketConfiguration.totalQuantity && (
+                      <div>Total tickets available: <span style={{ fontWeight: 600 }}>{event.ticketConfiguration.totalQuantity}</span></div>
+                    )}
+                    {event.ticketConfiguration.maxTicketsPerPerson && (
+                      <div>Max per person: <span style={{ fontWeight: 600 }}>{event.ticketConfiguration.maxTicketsPerPerson}</span></div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ color: '#dc2626', fontSize: '14px' }}>
+                ⚠️ Ticket configuration not properly set up
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Ticket Information Card - Show for Private Users */}
+        {!isCompanyView && (event?.ticketConfiguration?.pricingTiers?.length > 0 || event?.ticketType === 'Free ticket') && (
+          <div style={{ background: '#fff', color: '#1f2937', borderRadius: 12, padding: '16px', margin: '16px 0', boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004' }}>
+            <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#6b21a8', marginBottom: '12px' }}>TICKETS</h2>
+            
+            {event?.ticketType === 'Free ticket' ? (
+              <div>
+                <div style={{ fontWeight: 600, color: '#059669', marginBottom: '4px' }}>Free Event</div>
+                <div style={{ color: '#6b7280', fontSize: '14px' }}>No ticket purchase required</div>
+              </div>
+            ) : event?.ticketConfiguration?.pricingTiers ? (
+              <div>
+                <div style={{ marginBottom: '12px' }}>
+                  {event.ticketConfiguration.pricingTiers.map((tier, index) => {
+                    const availableQuantity = parseInt(tier.quantity) || 0;
+                    const isSoldOut = availableQuantity <= 0;
+                    return (
+                      <div key={index} style={{ 
+                        background: '#f9fafb', 
+                        border: '1px solid #e5e7eb', 
+                        borderRadius: '8px', 
+                        padding: '12px', 
+                        marginBottom: '8px' 
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <span style={{ fontWeight: 600, color: '#1f2937' }}>{tier.name}</span>
+                          <span style={{ fontWeight: 600, color: '#6b21a8' }}>
+                            {tier.price ? `${tier.price} DKK` : 'Free'}
+                          </span>
+                        </div>
+                        {tier.description && (
+                          <div style={{ color: '#6b7280', fontSize: '14px', marginBottom: '4px' }}>
+                            {tier.description}
+                          </div>
+                        )}
+                        <div style={{ fontSize: '12px', color: isSoldOut ? '#dc2626' : '#6b7280' }}>
+                          {isSoldOut ? 'Sold Out' : `${availableQuantity} tickets available`}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                <div style={{ textAlign: 'center', fontSize: '14px', color: '#6b7280' }}>
+                  Click "Tickets" button below to purchase
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div style={{ display: 'flex', gap: '16px', marginTop: '32px' }}>
           {isCompanyView ? (

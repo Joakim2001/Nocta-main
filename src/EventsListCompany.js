@@ -236,7 +236,7 @@ function EventCard({ event, navigate, showPreviousEvents }) {
   const dateLabel = formatDateLabel(eventDate, eventDateEnd);
   const timeLabel = formatTimeLabel(eventDate, eventDateEnd);
 
-    const clubName = event.fullname || event.venue || event.club || event.username || "Unknown";
+    const clubName = event.companyName || event.fullname || event.venue || event.club || event.username || "Unknown";
 
   return (
     <div
@@ -332,7 +332,7 @@ function EventCard({ event, navigate, showPreviousEvents }) {
             >
               TRENDING
             </span>
-          </div>
+      </div>
         )}
 
         <div style={{ position: 'absolute', bottom: 16, right: 8, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, zIndex: 10 }}>
@@ -656,7 +656,7 @@ function EventsListCompany() {
 
       const auth = getAuth();
       const user = auth.currentUser;
-
+      
       // Determine target collection based on original collection
       const targetCollection = eventToRepublish.originalCollection || 'Instagram_posts';
       console.log('🔄 Target collection:', targetCollection);
@@ -752,7 +752,7 @@ function EventsListCompany() {
   }
 
   useEffect(() => {
-    const auth = getAuth();
+      const auth = getAuth();
     
     // Keep checking for user until found or timeout
     let attempts = 0;
@@ -781,7 +781,7 @@ function EventsListCompany() {
       }
 
       try {
-                // 1. Fetch the company's profile to get their official name/username
+      // 1. Fetch the company's profile to get their official name/username
         let companyProfileNames = [];
         
                 if (user) {
@@ -821,18 +821,17 @@ function EventsListCompany() {
         companyProfileNames = [...new Set(companyProfileNames)]; // Remove duplicates
         console.log('🏢 Company profile names for filtering:', companyProfileNames);
 
-        // 2. Fetch all events from all collections
-        const [instagramSnap, companySnap, deletedSnap] = await Promise.all([
+        // 2. Fetch all events from Instagram_posts (includes both scraped and company-created)
+        // and deleted events separately
+        const [instagramSnap, deletedSnap] = await Promise.all([
           getDocs(collection(db, "Instagram_posts")),
-          getDocs(collection(db, "company-events")),
           getDocs(collection(db, "deleted_posts"))
         ]);
         
         console.log('🏢 Instagram posts found:', instagramSnap.docs.length);
-        console.log('🏢 Company events found:', companySnap.docs.length);
         console.log('🏢 Deleted posts found:', deletedSnap.docs.length);
         
-        // 3. Merge all events from all collections
+        // 3. Merge active and deleted events
         let allEvents = [
           ...instagramSnap.docs.map(doc => {
             const docData = doc.data();
@@ -851,24 +850,8 @@ function EventsListCompany() {
             // Ensure the proper Firestore document ID is used, not any ID from the data
             const eventData = { ...docData, id: doc.id, collection: 'Instagram_posts' };
             
-            console.log('🏢 Instagram event added:', doc.id, eventData.title || eventData.name);
-            return eventData;
-          }),
-          ...companySnap.docs.map(doc => {
-            const docData = doc.data();
-            
-            // Check for ID conflicts in company events too
-            if (docData.id && docData.id !== doc.id) {
-              console.log('⚠️ Company event data contains conflicting ID:', {
-                docId: doc.id,
-                dataId: docData.id,
-                title: docData.title || docData.name
-              });
-              docData.originalDataId = docData.id;
-            }
-            
-            const eventData = { ...docData, id: doc.id, collection: 'company-events' };
-            console.log('🏢 Company event added:', doc.id, eventData.title || eventData.name);
+            console.log('🏢 Instagram event added:', doc.id, eventData.title || eventData.name, 
+                       docData.source === 'company-created' ? '(Company-created)' : '(Scraped)');
             return eventData;
           }),
           ...deletedSnap.docs.map(doc => {
@@ -944,13 +927,13 @@ function EventsListCompany() {
         const companyDeletedEvents = allEvents.filter(event => {
           if (event.collection !== 'deleted_posts') return false;
           
-          const eventUsernames = [
-            event.username,
-            event.fullname,
+            const eventUsernames = [
+              event.username,
+              event.fullname,
             event.companyName,
             event.instagramusername
-          ].filter(Boolean).map(s => s.trim().toLowerCase());
-
+            ].filter(Boolean).map(s => s.trim().toLowerCase());
+            
           const isMyDeletedEvent = (user && event.userId === user.uid) || 
                                   (user && event.deletedBy === user.uid) ||
                                   eventUsernames.some(eventName => 
@@ -1043,16 +1026,16 @@ function EventsListCompany() {
           padding: '0 18px' 
         }}>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button
+                                    <button
               onClick={() => setShowDeletedEvents(false)}
-              style={{ 
+                                        style={{
                 background: !showDeletedEvents ? '#2a0845' : 'transparent',
                 color: !showDeletedEvents ? '#fff' : '#2a0845',
                 border: !showDeletedEvents ? '2px solid #fff' : '2px solid #2a0845',
                 fontWeight: 700, 
                 fontSize: 16, 
                 borderRadius: 24, 
-                padding: '8px 16px', 
+                                    padding: '8px 16px',
                 boxShadow: !showDeletedEvents ? '0 2px 12px #0004' : 'none', 
                 letterSpacing: 0.5, 
                 textShadow: !showDeletedEvents ? '0 2px 8px #3E29F099' : 'none',
@@ -1060,17 +1043,17 @@ function EventsListCompany() {
               }}
             >
               My Posts ({events.length})
-            </button>
-            <button
+                                    </button>
+              <button
               onClick={() => setShowDeletedEvents(true)}
-              style={{ 
+                style={{
                 background: showDeletedEvents ? '#dc2626' : 'transparent',
                 color: showDeletedEvents ? '#fff' : '#dc2626',
                 border: showDeletedEvents ? '2px solid #fff' : '2px solid #dc2626',
                 fontWeight: 700, 
                 fontSize: 16, 
                 borderRadius: 24, 
-                padding: '8px 16px', 
+                                    padding: '8px 16px',
                 boxShadow: showDeletedEvents ? '0 2px 12px #0004' : 'none', 
                 letterSpacing: 0.5, 
                 textShadow: showDeletedEvents ? '0 2px 8px #dc262699' : 'none',
@@ -1078,8 +1061,8 @@ function EventsListCompany() {
               }}
             >
               Deleted ({deletedEvents.length})
-            </button>
-          </div>
+              </button>
+        </div>
       </div>
         </div>
 
@@ -1133,16 +1116,16 @@ function EventsListCompany() {
                 </div>
               ) : (
                 events.map((event) => (
-                  <EventCard 
-                    key={event.id} 
-                    event={event} 
-                    navigate={navigate}
+                        <EventCard 
+                            key={event.id} 
+                            event={event} 
+                            navigate={navigate}
                     showPreviousEvents={false}
-                  />
+                        />
                 ))
               )
             )}
-        </div>
+            </div>
             </div>
         </div>
         <BottomNavCompany />
