@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAuth } from 'firebase/auth';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { toast } from 'react-toastify';
 // Removed direct Firestore imports - using Cloud Function instead
 import BottomNav from './BottomNav';
@@ -13,8 +13,9 @@ export default function MyTickets() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('current'); // 'current' or 'previous'
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const auth = getAuth();
-  const user = auth.currentUser;
 
   // Define fetchTickets outside useEffect so it can be reused
   const fetchTickets = async () => {
@@ -48,6 +49,14 @@ export default function MyTickets() {
           price: ticket.price,
           tierName: ticket.tierName
         })));
+        
+        // Debug information
+        if (data.debug) {
+          console.log('🔍 DEBUG - Looking for user ID:', data.debug.lookingForUserId);
+          console.log('🔍 DEBUG - All user IDs in tickets:', data.debug.allUserIds);
+          console.log('🔍 DEBUG - Sample tickets:', data.debug.sampleTickets);
+        }
+        
         setTickets(data.tickets);
       } else {
         console.error('Error from function:', data.error);
@@ -61,14 +70,30 @@ export default function MyTickets() {
     }
   };
 
+  // Authentication state listener
   useEffect(() => {
-    if (!user) {
-      navigate('/login');
-      return;
-    }
+    console.log('MyTickets: Setting up auth listener');
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      console.log('MyTickets: Auth state changed:', currentUser ? `User: ${currentUser.uid}` : 'No user');
+      setUser(currentUser);
+      setAuthLoading(false);
+      
+      if (!currentUser) {
+        console.log('MyTickets: No user, redirecting to login');
+        navigate('/login');
+      }
+    });
 
-    fetchTickets();
-  }, [user, navigate]);
+    return () => unsubscribe();
+  }, [auth, navigate]);
+
+  // Fetch tickets when user is available
+  useEffect(() => {
+    if (!authLoading && user) {
+      console.log('MyTickets: User available, fetching tickets');
+      fetchTickets();
+    }
+  }, [user, authLoading]);
 
   // Capture the beforeinstallprompt event
   useEffect(() => {
@@ -408,10 +433,12 @@ export default function MyTickets() {
     );
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div style={{ minHeight: '100vh', background: '#3b1a5c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ color: '#fff', fontSize: '18px' }}>Loading your tickets...</div>
+        <div style={{ color: '#fff', fontSize: '18px' }}>
+          {authLoading ? 'Checking authentication...' : 'Loading your tickets...'}
+        </div>
       </div>
     );
   }

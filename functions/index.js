@@ -153,8 +153,8 @@ exports.stripeWebhook = onRequest(
             
             console.log('Updating ticket availability for event:', eventId, 'tier:', tierIndex);
             
-            // Get the event document
-            const eventRef = db.collection('company-events').doc(eventId);
+            // Get the event document from Instagram_posts (events were migrated there)
+            const eventRef = db.collection('Instagram_posts').doc(eventId);
             const eventDoc = await eventRef.get();
             
             if (eventDoc.exists) {
@@ -163,7 +163,9 @@ exports.stripeWebhook = onRequest(
               
               // Update ticket data with event information
               ticketData.eventDate = eventData.eventDate || eventData.eventDates?.[0];
-              ticketData.eventDateEnd = eventData.eventDateEnd;
+              if (eventData.eventDateEnd) {
+                ticketData.eventDateEnd = eventData.eventDateEnd;
+              }
               ticketData.location = eventData.location;
               ticketData.companyName = eventData.companyName;
               ticketData.tierName = ticketConfig?.pricingTiers?.[tierIndex]?.name || 'General Admission';
@@ -247,7 +249,7 @@ exports.createCheckoutSessionSimple = onRequest(
       return res.status(405).send('Method Not Allowed');
     }
 
-    const { price, eventName, userEmail, eventId, tierIndex } = req.body;
+    const { price, eventName, userEmail, eventId, tierIndex, baseUrl, userId } = req.body;
 
     if (!price || !eventName || !userEmail) {
       return res.status(400).send('Missing required fields');
@@ -256,6 +258,10 @@ exports.createCheckoutSessionSimple = onRequest(
     try {
       console.log('Creating simple checkout session');
       const stripe = stripeLib(process.env.STRIPE_SECRET);
+
+      // Determine base URL - use provided baseUrl or fallback to production
+      const redirectBaseUrl = baseUrl || 'https://nocta-d1113.web.app';
+      console.log('Using redirect base URL:', redirectBaseUrl);
 
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
@@ -273,14 +279,16 @@ exports.createCheckoutSessionSimple = onRequest(
           },
         ],
         customer_email: userEmail,
+        client_reference_id: userId, // This is crucial for the webhook to identify the user
         metadata: {
           eventName: eventName,
           userEmail: userEmail,
           eventId: eventId || '',
-          tierIndex: tierIndex?.toString() || '0'
+          tierIndex: tierIndex?.toString() || '0',
+          userId: userId || ''
         },
-        success_url: 'https://nocta-d1113.web.app/payment-success',
-        cancel_url: 'https://nocta-d1113.web.app/payment-cancel'
+        success_url: `${redirectBaseUrl}/payment-success`,
+        cancel_url: `${redirectBaseUrl}/payment-cancel`
       });
 
       console.log('Checkout session created successfully');
@@ -395,6 +403,19 @@ exports.getUserTickets = onRequest(
       
       console.log('All tickets found:', allTickets.length);
       
+      // Debug: Log all user IDs in tickets
+      const userIds = allTickets.map(ticket => ticket.userId);
+      console.log('All user IDs in tickets:', userIds);
+      console.log('Looking for user ID:', userId);
+      
+      // Debug: Log first few tickets to see their structure
+      console.log('Sample tickets:', allTickets.slice(0, 3).map(t => ({
+        id: t.id,
+        userId: t.userId,
+        eventName: t.eventName,
+        customerEmail: t.customerEmail
+      })));
+      
       // Filter for this user
       const userTickets = allTickets.filter(ticket => ticket.userId === userId);
       
@@ -410,7 +431,17 @@ exports.getUserTickets = onRequest(
       res.json({ 
         success: true, 
         tickets: userTickets,
-        totalTickets: allTickets.length
+        totalTickets: allTickets.length,
+        debug: {
+          lookingForUserId: userId,
+          allUserIds: userIds,
+          sampleTickets: allTickets.slice(0, 3).map(t => ({
+            id: t.id,
+            userId: t.userId,
+            eventName: t.eventName,
+            customerEmail: t.customerEmail
+          }))
+        }
       });
       
     } catch (error) {
@@ -691,6 +722,75 @@ exports.validateTicket = onRequest(
     }
   }
 );
+// Debug function to fix user ID mismatch
+exports.fixUserIdMismatch = onRequest(
+  {
+    region: 'europe-west1',
+    cors: true,
+    invoker: 'public'
+  },
+  async (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    
+    if (req.method === 'OPTIONS') {
+      res.status(204).send('');
+      return;
+    }
+    
+    const { currentUserId, targetEmail } = req.body;
+    
+    if (!currentUserId || !targetEmail) {
+      return res.status(400).json({ error: 'Missing currentUserId or targetEmail' });
+    }
+    
+    try {
+      // Find the most recent ticket with the target email
+      const ticketsSnapshot = await db.collection('tickets').get();
+      const allTickets = ticketsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        docRef: doc.ref,
+        ...doc.data()
+      }));
+      
+      // Find tickets with matching email
+      const matchingTickets = allTickets.filter(ticket => 
+        ticket.customerEmail === targetEmail
+      );
+      
+      if (matchingTickets.length === 0) {
+        return res.json({ success: false, message: 'No tickets found with that email' });
+      }
+      
+      // Get the most recent ticket
+      const mostRecentTicket = matchingTickets.sort((a, b) => {
+        const dateA = a.purchaseDate?.seconds || 0;
+        const dateB = b.purchaseDate?.seconds || 0;
+        return dateB - dateA;
+      })[0];
+      
+      // Update the ticket's userId
+      await mostRecentTicket.docRef.update({
+        userId: currentUserId
+      });
+      
+      console.log(`Updated ticket ${mostRecentTicket.id} userId to ${currentUserId}`);
+      
+      res.json({ 
+        success: true, 
+        message: 'Ticket ownership transferred successfully',
+        ticketId: mostRecentTicket.id,
+        eventName: mostRecentTicket.eventName
+      });
+      
+    } catch (error) {
+      console.error('Error fixing user ID mismatch:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
 console.log("createCheckoutSession export complete!");
 
 // New Payment Intent function for in-page payments
