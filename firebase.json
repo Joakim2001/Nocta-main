@@ -22,6 +22,11 @@
   "functions": {
     "source": "functions"
   },
+  "emulators": {
+    "functions": {
+      "port": 5001
+    }
+  },
   "extensions": {
     "firestore-send-email": "firebase/firestore-send-email@0.2.4",
     "email-sender": "firebase/firestore-send-email@0.2.4"

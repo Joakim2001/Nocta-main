@@ -713,7 +713,7 @@ export default function EventDetailPage() {
     if (!user) {
       navigate('/login');
       return;
-  }
+    }
 
     // Check if ticket is still available
     const tier = event?.ticketConfiguration?.pricingTiers?.[tierIndex];
@@ -726,7 +726,11 @@ export default function EventDetailPage() {
     
     try {
       console.log('🎫 Creating simple checkout session');
-      const response = await fetch('https://europe-west1-nocta-d1113.cloudfunctions.net/createCheckoutSessionSimple', {
+      // Temporarily use production functions for testing
+      const functionsUrl = 'https://europe-west1-nocta-d1113.cloudfunctions.net/createCheckoutSessionSimple';
+      
+      console.log('🎫 Using functions URL:', functionsUrl);
+      const response = await fetch(functionsUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -737,7 +741,8 @@ export default function EventDetailPage() {
           userEmail: user.email,
           userId: user.uid,
           eventId: event.id,
-          tierIndex: tierIndex
+          tierIndex: tierIndex,
+          baseUrl: window.location.origin // This will be http://localhost:3000 or https://nocta-d1113.web.app
         })
       });
 
