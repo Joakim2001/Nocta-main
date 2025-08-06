@@ -45,11 +45,13 @@ const proxyImageUrl = async (url) => {
         return data.dataUrl;
       } else {
         logger.error('EventDetail - Proxy function failed:', data.error);
-        return url; // Return original URL as fallback
+        // Try to use a different approach or return a default image
+        return '/default-tyrolia.jpg';
       }
     } catch (error) {
       logger.error('EventDetail - Error calling proxy function:', error);
-      return url; // Return original URL as fallback
+      // Return default image instead of broken URL
+      return '/default-tyrolia.jpg';
     }
   }
 
@@ -78,11 +80,13 @@ const proxyVideoUrl = async (url) => {
         return data.proxyUrl;
       } else {
         logger.error('EventDetail - Video proxy function failed:', data.error);
-        return url; // Return original URL as fallback
+        // Skip video if proxy fails instead of showing broken video
+        return null;
       }
     } catch (error) {
       logger.error('EventDetail - Error calling video proxy function:', error);
-      return url; // Return original URL as fallback
+      // Skip video if proxy fails
+      return null;
     }
   }
 
@@ -528,7 +532,22 @@ export default function EventDetailPage() {
           }
         } else {
           logger.debug('Document does not exist in either collection');
-          setEvent(null);
+          
+          // Check if the event might be in deleted_posts collection
+          logger.debug('Checking deleted_posts collection as fallback...');
+          const deletedDocRef = doc(db, "deleted_posts", String(id));
+          const deletedDocSnap = await getDoc(deletedDocRef);
+          
+          if (deletedDocSnap.exists()) {
+            logger.debug('Event found in deleted_posts collection');
+            const eventData = { id: deletedDocSnap.id, ...deletedDocSnap.data() };
+            setEvent(eventData);
+            eventRef.current = eventData;
+            sessionStorage.setItem(`event_${id}`, JSON.stringify(eventData));
+          } else {
+            logger.debug('Event not found in any collection including deleted_posts');
+            setEvent(null);
+          }
         }
       } catch (err) {
         logger.error("Error fetching event:", err);
@@ -711,7 +730,10 @@ export default function EventDetailPage() {
     const user = auth.currentUser;
     
     if (!user) {
-      navigate('/login');
+      // Show a user-friendly message for guest users
+      if (window.confirm('You need to sign up to buy tickets. Would you like to sign up now?')) {
+        navigate('/signup');
+      }
       return;
     }
 
@@ -811,6 +833,14 @@ export default function EventDetailPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#3b1a5c', color: '#fff', paddingBottom: 100 }}>
+      <style>
+        {`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}
+      </style>
       {/* Top Bar */}
       <div style={{
         display: 'flex',
@@ -883,13 +913,85 @@ export default function EventDetailPage() {
       </div>
 
       <div style={{ maxWidth: 448, margin: '0 auto', padding: '0 16px' }}>
-        {/* Media Carousel */}
-        <div 
-          style={{ position: 'relative', height: '12rem', margin: '16px 0', borderRadius: 18, overflow: 'hidden', boxShadow: '0 6px 20px 2px rgba(0, 0, 0, 0.7), 0 3px 12px 1px rgba(0, 0, 0, 0.5)', border: '2px solid #888888' }}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-        >
+        {/* Loading State */}
+        {loading && (
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '50vh',
+            flexDirection: 'column',
+            gap: '16px'
+          }}>
+            <div style={{ 
+              width: '40px', 
+              height: '40px', 
+              border: '4px solid rgba(255,255,255,0.3)', 
+              borderTop: '4px solid #fff', 
+              borderRadius: '50%', 
+              animation: 'spin 1s linear infinite' 
+            }}></div>
+            <div style={{ color: '#fff', fontSize: '16px' }}>Loading event...</div>
+          </div>
+        )}
+
+        {/* Error State - Event Not Found */}
+        {!loading && !event && (
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '50vh',
+            flexDirection: 'column',
+            gap: '16px',
+            textAlign: 'center',
+            padding: '20px'
+          }}>
+            <div style={{ 
+              fontSize: '48px', 
+              color: '#ef4444',
+              marginBottom: '16px'
+            }}>⚠️</div>
+            <div style={{ 
+              color: '#fff', 
+              fontSize: '20px', 
+              fontWeight: '600',
+              marginBottom: '8px'
+            }}>Event Not Found</div>
+            <div style={{ 
+              color: '#cbd5e1', 
+              fontSize: '14px',
+              marginBottom: '24px'
+            }}>
+              The event you're looking for doesn't exist or may have been removed.
+            </div>
+            <button
+              onClick={() => navigate(-1)}
+              style={{
+                background: 'linear-gradient(90deg, #F941F9 0%, #3E29F0 100%)',
+                color: '#fff',
+                padding: '12px 24px',
+                borderRadius: '8px',
+                border: 'none',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
+              Go Back
+            </button>
+          </div>
+        )}
+
+        {/* Event Content - only show when event exists and not loading */}
+        {!loading && event && (
+          <>
+            <div 
+              style={{ position: 'relative', height: '12rem', margin: '16px 0', borderRadius: 18, overflow: 'hidden', boxShadow: '0 6px 20px 2px rgba(0, 0, 0, 0.7), 0 3px 12px 1px rgba(0, 0, 0, 0.5)', border: '2px solid #888888' }}
+              onTouchStart={onTouchStart}
+              onTouchMove={onTouchMove}
+              onTouchEnd={onTouchEnd}
+            >
           {mediaItems && mediaItems.length > 0 && (
             <>
               {mediaItems[currentImageIndex]?.type === 'video' ? (
@@ -948,7 +1050,14 @@ export default function EventDetailPage() {
                     borderRadius: '18px',
                     transition: 'opacity 0.3s ease-in-out',
                     cursor: 'pointer'
-                  }} 
+                  }}
+                  onError={(e) => {
+                    console.log('❌ Image failed to load in carousel:', mediaItems[currentImageIndex]?.url);
+                    logger.error('EventDetail - Image error details:', e);
+                    
+                    // Replace failed image with default
+                    e.target.src = '/default-tyrolia.jpg';
+                  }}
                 />
               )}
               
@@ -1037,7 +1146,7 @@ export default function EventDetailPage() {
               )}
             </>
           )}
-        </div>
+            </div>
 
         {/* Title */}
         <h1 style={{ textAlign: 'center', fontSize: '1.5rem', fontWeight: 600, margin: '24px auto', maxWidth: '320px' }}>
@@ -1281,7 +1390,9 @@ export default function EventDetailPage() {
             </>
           )}
         </div>
-            </div>
+          </>
+        )}
+      </div>
 
       {/* Ticket Purchase Modal */}
       {showTicketModal && event && (
@@ -1456,10 +1567,10 @@ export default function EventDetailPage() {
             {purchasingTicket && (
               <div style={{ textAlign: 'center', marginTop: '16px', color: '#a445ff' }}>
                 Creating checkout session...
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
         </>
       )}
 
@@ -1777,8 +1888,6 @@ export default function EventDetailPage() {
 
       {/* Conditional Bottom Navigation */}
       {isCompanyView ? <BottomNavCompany /> : <BottomNav />}
-      
-
     </div>
   );
-} 
+}

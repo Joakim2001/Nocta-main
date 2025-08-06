@@ -42,7 +42,11 @@ function ProfilePage() {
         }
         setLoading(false);
       } else {
-        navigate('/login');
+        // User is not authenticated (guest mode)
+        setUser(null);
+        setUserData(null);
+        setLoading(false);
+        // Don't redirect to login - allow guest browsing
       }
     });
 
@@ -194,23 +198,24 @@ function ProfilePage() {
             fontWeight: 600,
             color: '#fff'
           }}>
-            {userData?.fullname ? userData.fullname.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase()}
+            {user ? (userData?.fullname ? userData.fullname.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase()) : '👤'}
           </div>
           <div style={{ fontSize: 20, fontWeight: 600, color: '#fff', marginBottom: 4 }}>
-            {userData?.fullname || 'User'}
+            {user ? (userData?.fullname || 'User') : 'Guest User'}
           </div>
           <div style={{ fontSize: 14, color: '#94a3b8' }}>
-            {user?.email}
+            {user ? user?.email : 'Sign up to access all features'}
           </div>
         </div>
 
-        {/* Account Information */}
-        <div style={{ 
-          background: '#1e293b', 
-          borderRadius: 16, 
-          padding: 24, 
-          marginBottom: 20
-        }}>
+        {/* Account Information - Only show for authenticated users */}
+        {user && (
+          <div style={{ 
+            background: '#1e293b', 
+            borderRadius: 16, 
+            padding: 24, 
+            marginBottom: 20
+          }}>
           <div style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: 20 }}>
             Account Information
           </div>
@@ -364,14 +369,16 @@ function ProfilePage() {
             </div>
           )}
         </div>
+        )}
 
-        {/* Account Actions */}
-        <div style={{ 
-          background: '#1e293b', 
-          borderRadius: 16, 
-          padding: 24, 
-          marginBottom: 20
-        }}>
+        {/* Account Actions - Only show for authenticated users */}
+        {user && (
+          <div style={{ 
+            background: '#1e293b', 
+            borderRadius: 16, 
+            padding: 24, 
+            marginBottom: 20
+          }}>
           <div style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: 20 }}>
             Account Actions
           </div>
@@ -420,14 +427,16 @@ function ProfilePage() {
             </button>
           </div>
         </div>
+        )}
 
-        {/* Favorites Management */}
-        <div style={{ 
-          background: '#1e293b', 
-          borderRadius: 16, 
-          padding: 24, 
-          marginBottom: 20
-        }}>
+        {/* Favorites Management - Only show for authenticated users */}
+        {user && (
+          <div style={{ 
+            background: '#1e293b', 
+            borderRadius: 16, 
+            padding: 24, 
+            marginBottom: 20
+          }}>
           <div style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: 20 }}>
             My Favorites
           </div>
@@ -595,14 +604,51 @@ function ProfilePage() {
             </div>
           )}
         </div>
+        )}
 
-        {/* Sign Out */}
+        {/* Guest Mode Message */}
+        {!user && (
+          <div style={{ 
+            background: '#1e293b', 
+            borderRadius: 16, 
+            padding: 24, 
+            marginBottom: 20,
+            textAlign: 'center'
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: 12 }}>
+              Welcome to Nocta! 👋
+            </div>
+            <div style={{ fontSize: 14, color: '#94a3b8', marginBottom: 16, lineHeight: 1.5 }}>
+              You're currently browsing in guest mode. Sign up to access all features including:
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#94a3b8' }}>
+                <span style={{ color: '#10b981' }}>✓</span>
+                Buy tickets for events
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#94a3b8' }}>
+                <span style={{ color: '#10b981' }}>✓</span>
+                Save favorite venues
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#94a3b8' }}>
+                <span style={{ color: '#10b981' }}>✓</span>
+                Chat with event organizers
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#94a3b8' }}>
+                <span style={{ color: '#10b981' }}>✓</span>
+                Track your ticket purchases
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sign Out / Sign Up Button */}
         <button
-          onClick={handleSignOut}
+          onClick={user ? handleSignOut : () => navigate('/signup')}
           style={{
             width: '100%',
             padding: '16px',
-            background: '#ef4444',
+            background: user ? '#ef4444' : '#a445ff',
             border: 'none',
             borderRadius: 8,
             color: '#fff',
@@ -611,7 +657,7 @@ function ProfilePage() {
             fontWeight: 600
           }}
         >
-          Sign Out
+          {user ? 'Sign Out' : 'Sign Up'}
         </button>
       </div>
     </div>

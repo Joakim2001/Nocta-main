@@ -1,19 +1,15 @@
-import React, { useContext } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserTypeContext } from './UserTypeContext';
 
-function UserTypeSelect() {
+function PrivateUserSignupChoice() {
   const navigate = useNavigate();
-  const { setUserType } = useContext(UserTypeContext);
 
-  const handleSelect = (type) => {
-    setUserType(type);
-    localStorage.setItem('userType', type); // Redundant, but ensures persistence
-    if (type === 'company') {
-      navigate('/company-signup');
-    } else {
-      navigate('/private-signup-choice');
-    }
+  const handleSignUpNow = () => {
+    navigate('/signup');
+  };
+
+  const handleSignUpLater = () => {
+    navigate('/home');
   };
 
   return (
@@ -28,12 +24,44 @@ function UserTypeSelect() {
       overflow: 'hidden',
       position: 'relative',
     }}>
+      {/* Back Button */}
+      <button 
+        onClick={() => navigate('/select-type')}
+        style={{
+          position: 'absolute',
+          top: 20,
+          left: 20,
+          background: 'rgba(255, 255, 255, 0.1)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          borderRadius: '50%',
+          width: 40,
+          height: 40,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          color: '#00b3ff',
+          transition: 'all 0.2s ease',
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
+          e.target.style.transform = 'scale(1.1)';
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+          e.target.style.transform = 'scale(1)';
+        }}
+      >
+        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+        </svg>
+      </button>
       {/* No card, just centered content */}
       <div style={{ textAlign: 'center', width: '100%', maxWidth: 400, margin: '0 auto' }}>
         <h1 style={{ color: '#F2F2F2', fontSize: 48, fontFamily: 'Playfair Display, serif', fontWeight: 600, margin: '0 0 32px 0', letterSpacing: 1 }}>Nocta</h1>
         <div style={{ marginBottom: 40 }}>
           <p style={{ color: '#ccc', fontSize: 16, margin: '8px 0 0 0', opacity: 0.85, textAlign: 'center' }}>
-            Select your user type
+            Ready to get started?
           </p>
         </div>
         <button
@@ -56,9 +84,9 @@ function UserTypeSelect() {
             cursor: 'pointer',
             transition: 'background 0.2s, box-shadow 0.2s',
           }}
-          onClick={() => handleSelect('private')}
+          onClick={handleSignUpNow}
         >
-          Private User
+          Sign up now
         </button>
         <button
           style={{
@@ -66,7 +94,7 @@ function UserTypeSelect() {
             fontSize: 18,
             color: '#FFFFFF',
             background: 'linear-gradient(90deg, #F941F9 0%, #3E29F0 100%)',
-            padding: '16px 60px',
+            padding: '16px 48px',
             borderRadius: 32,
             textAlign: 'center',
             marginBottom: 16,
@@ -80,13 +108,13 @@ function UserTypeSelect() {
             cursor: 'pointer',
             transition: 'background 0.2s, box-shadow 0.2s',
           }}
-          onClick={() => handleSelect('company')}
+          onClick={handleSignUpLater}
         >
-          Company
+          Sign up later
         </button>
       </div>
     </div>
   );
 }
 
-export default UserTypeSelect; 
+export default PrivateUserSignupChoice; 
