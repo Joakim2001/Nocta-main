@@ -10,6 +10,7 @@ import EventDetailPage from "./EventDetailPage";
 import BarsList from "./BarsList";
 import FrontPage from './FrontPage';
 import UserTypeSelect from './UserTypeSelect';
+import PrivateUserSignupChoice from './PrivateUserSignupChoice';
 import { useUserType } from './UserTypeContext';
 import CompanyVerificationSetup from './CompanyVerificationSetup';
 import CompanyVerification from './CompanyVerification';
@@ -610,7 +611,7 @@ function AuthPage() {
     }}>
       {/* Back Button */}
       <button 
-        onClick={() => navigate('/select-type')}
+        onClick={() => navigate(tab === 'signup' ? '/private-signup-choice' : '/select-type')}
         style={{
           position: 'absolute',
           top: 20,
@@ -1187,7 +1188,7 @@ function App() {
     return () => unsub();
   }, [userType, setProfileLoaded, setProfileComplete, location.pathname]);
 
-  const hideNavRoutes = ['/', '/login', '/signup', '/profile-setup', '/favorites-setup', '/select-type', '/company-setup', '/company-setup-final', '/company-verification-setup', '/company-verification', '/verification-pending', '/company-login', '/company-signup'];
+  const hideNavRoutes = ['/', '/login', '/signup', '/profile-setup', '/favorites-setup', '/select-type', '/private-signup-choice', '/company-setup', '/company-setup-final', '/company-verification-setup', '/company-verification', '/verification-pending', '/company-login', '/company-signup'];
   const shouldShowBottomNav = !hideNavRoutes.includes(location.pathname) && !location.pathname.startsWith('/company-deleted-event/') && !location.pathname.startsWith('/event/');
   const shouldShowCompanyNav = location.pathname === '/company-events' || location.pathname.startsWith('/company-create-event') || location.pathname === '/ticket-configuration';
 
@@ -1203,6 +1204,7 @@ function App() {
             <Routes>
               <Route path="/" element={<FrontPage />} />
               <Route path="/select-type" element={<UserTypeSelect />} />
+    <Route path="/private-signup-choice" element={<PrivateUserSignupChoice />} />
               <Route path="/login" element={<AuthPage />} />
               <Route path="/signup" element={<AuthPage />} />
               <Route path="/company-signup" element={<AuthPageCompany />} />
@@ -1224,6 +1226,10 @@ function App() {
           <Route path="/home" element={
             (() => {
               console.log('🔍 App.js: /home route check - profileLoaded:', profileLoaded, 'profileComplete:', profileComplete);
+              // Allow guest browsing - if no user, show the page without authentication
+              if (!user) {
+                return <EventsListWithNav />;
+              }
               return profileLoaded && profileComplete ? <EventsListWithNav /> : <Navigate to={userType === 'company' ? "/company-verification-setup" : "/profile-setup"} replace />;
             })()
           } />

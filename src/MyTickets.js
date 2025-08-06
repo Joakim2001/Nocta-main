@@ -79,8 +79,8 @@ export default function MyTickets() {
       setAuthLoading(false);
       
       if (!currentUser) {
-        console.log('MyTickets: No user, redirecting to login');
-        navigate('/login');
+        console.log('MyTickets: No user, redirecting to signup');
+        navigate('/signup');
       }
     });
 
