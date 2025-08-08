@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, addDoc, collection, doc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+// Firebase Storage imports removed - using base64 instead
 import { useNavigate, useLocation } from 'react-router-dom';
 // Removed react-datepicker imports to fix module resolution issues
 
@@ -15,7 +15,7 @@ function CreateCompanyEvent() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [eventLocation, setEventLocation] = useState('');
-  const [imageFile, setImageFile] = useState(null);
+  const [imageFiles, setImageFiles] = useState([]);
   const [imagePreview, setImagePreview] = useState(null);
   const [dateMode, setDateMode] = useState('simple'); // 'simple' or 'range'
   const [multiDates, setMultiDates] = useState(['']);
@@ -50,12 +50,12 @@ function CreateCompanyEvent() {
   };
 
   useEffect(() => {
-    if (imageFile) {
-      const url = URL.createObjectURL(imageFile);
-      setImagePreview(url);
-      return () => URL.revokeObjectURL(url);
+    if (imageFiles.length > 0) {
+      const urls = imageFiles.map(file => URL.createObjectURL(file));
+      setImagePreview(urls);
+      return () => urls.forEach(url => URL.revokeObjectURL(url));
     }
-  }, [imageFile]);
+  }, [imageFiles]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -91,13 +91,13 @@ function CreateCompanyEvent() {
       return false;
     }
 
-    if (!user || !title || !isDateValid() || !imageFile) {
+    if (!user || !title || !isDateValid() || imageFiles.length === 0) {
       alert("Please fill all required fields and upload an image.");
       return;
     }
     
     // Show user that image will use default due to technical issues
-    if (imageFile) {
+    if (imageFiles.length > 0) {
       console.log("Note: Image will use default due to Firebase Storage configuration");
     }
     setUploading(true);
@@ -118,28 +118,50 @@ function CreateCompanyEvent() {
 
       let imageUrl = '/default-tyrolia.jpg';
       
-      // Skip image upload for now due to CORS issues
-      // TODO: Fix Firebase Storage CORS configuration
-      console.log("Skipping image upload due to CORS configuration issues");
+      // Convert images to base64 and store directly in Firestore
+      const imageUrls = [];
       
-      // Uncomment this section once Firebase Storage CORS is configured:
-      /*
-      try {
-      const imageRef = storageRef(getStorage(), `company-event-images/${user.uid}/${Date.now()}_${imageFile.name}`);
-      await uploadBytes(imageRef, imageFile);
-      imageUrl = await getDownloadURL(imageRef);
-      } catch (uploadError) {
-        console.error("Image upload failed:", uploadError);
+      if (imageFiles.length > 0) {
+        try {
+          console.log(`Converting ${imageFiles.length} images to base64...`);
+          
+          for (let i = 0; i < imageFiles.length; i++) {
+            const file = imageFiles[i];
+            
+            // Convert file to base64
+            const base64 = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            });
+            
+            imageUrls.push(base64);
+            console.log(`✅ Image ${i + 1} converted to base64 successfully`);
+          }
+          
+          // Set the first image as the main image
+          imageUrl = imageUrls[0];
+          console.log(`✅ Set main image: ${imageUrl.substring(0, 50)}...`);
+          
+        } catch (conversionError) {
+          console.error("❌ Image conversion failed:", conversionError);
+          imageUrl = '/default-tyrolia.jpg';
+          imageUrls.push('/default-tyrolia.jpg');
+        }
+      } else {
+        console.log("No image files provided, using default image");
         imageUrl = '/default-tyrolia.jpg';
+        imageUrls.push('/default-tyrolia.jpg');
       }
-      */
       
       const eventData = {
         userId: user.uid,
         title,
         description,
         location: eventLocation,
-        imageUrl,
+        imageUrl, // Main image (first image)
+        imageUrls: imageUrls.length > 0 ? imageUrls : [imageUrl], // All images
         companyName: companyName || "Unknown Company",
         startTime,
         endTime,
@@ -248,31 +270,177 @@ function CreateCompanyEvent() {
       <div style={{ background: '#3b1a5c', paddingTop: '24px', paddingBottom: '24px' }}>
         <div style={{ maxWidth: 400, margin: '0 auto', padding: '0 16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
-        <button
-          onClick={() => fileInputRef.current.click()}
-          style={{
-                width: '100%',
-                height: 200,
-                borderRadius: 18,
-                background: imagePreview ? `url(${imagePreview}) center/cover` : '#4b1fa2',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            border: 'none',
-            cursor: 'pointer',
-                boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004'
-          }}
-        >
-          {!imagePreview && (
-            <>
+        {/* Image Upload Section */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Main Upload Button */}
+          <button
+            onClick={() => fileInputRef.current.click()}
+            style={{
+              width: '100%',
+              height: 200,
+              borderRadius: 18,
+              background: imagePreview && imagePreview.length > 0 ? `url(${imagePreview[0]}) center/cover` : '#4b1fa2',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              border: 'none',
+              cursor: 'pointer',
+              boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004',
+              position: 'relative'
+            }}
+          >
+            {(!imagePreview || imagePreview.length === 0) && (
+              <>
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h7" /><path d="M18 8V2m-3 3h6" /></svg>
-                <span style={{ fontWeight: 500, fontSize: 18, marginTop: '8px' }}>Upload picture</span>
-            </>
+                <span style={{ fontWeight: 500, fontSize: 18, marginTop: '8px' }}>Upload pictures</span>
+                <span style={{ fontSize: 14, marginTop: '4px', opacity: 0.8 }}>Select multiple images</span>
+              </>
+            )}
+            
+            {/* Add More Button Overlay */}
+            {imagePreview && imagePreview.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: 12,
+                right: 12,
+                background: 'rgba(0, 0, 0, 0.7)',
+                borderRadius: '50%',
+                width: 48,
+                height: 48,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                border: '2px solid #fff'
+              }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+              </div>
+            )}
+            
+            <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => {
+              const newFiles = Array.from(e.target.files);
+              setImageFiles(prev => [...prev, ...newFiles]);
+              
+              // Create previews for new files
+              const newPreviews = [];
+              newFiles.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                  newPreviews.push(reader.result);
+                  if (newPreviews.length === newFiles.length) {
+                    setImagePreview(prev => [...prev, ...newPreviews]);
+                  }
+                };
+                reader.readAsDataURL(file);
+              });
+            }} />
+          </button>
+
+          {/* Image Preview Gallery */}
+          {imagePreview && imagePreview.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                <span style={{ fontSize: 14, fontWeight: 500, color: '#666' }}>
+                  {imagePreview.length} image{imagePreview.length !== 1 ? 's' : ''} selected
+                </span>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0' }}>
+                {imagePreview.map((preview, index) => (
+                  <div key={index} style={{ position: 'relative', flexShrink: 0 }}>
+                    <img 
+                      src={preview} 
+                      alt={`Preview ${index + 1}`}
+                      style={{ 
+                        width: 80, 
+                        height: 80, 
+                        borderRadius: 8, 
+                        objectFit: 'cover',
+                        border: index === 0 ? '3px solid #4b1fa2' : '1px solid #ddd',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => {
+                        // Move this image to first position (make it main)
+                        const newFiles = [...imageFiles];
+                        const newPreviews = [...imagePreview];
+                        const movedFile = newFiles.splice(index, 1)[0];
+                        const movedPreview = newPreviews.splice(index, 1)[0];
+                        newFiles.unshift(movedFile);
+                        newPreviews.unshift(movedPreview);
+                        setImageFiles(newFiles);
+                        setImagePreview(newPreviews);
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        const newFiles = imageFiles.filter((_, i) => i !== index);
+                        setImageFiles(newFiles);
+                        const newPreviews = imagePreview.filter((_, i) => i !== index);
+                        setImagePreview(newPreviews);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: -8,
+                        right: -8,
+                        width: 24,
+                        height: 24,
+                        borderRadius: '50%',
+                        background: '#ff4444',
+                        color: '#fff',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: 16,
+                        fontWeight: 'bold',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+                      }}
+                    >
+                      ×
+                    </button>
+                    {index === 0 && (
+                      <div style={{
+                        position: 'absolute',
+                        bottom: 4,
+                        left: 4,
+                        background: '#4b1fa2',
+                        color: '#fff',
+                        fontSize: 10,
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        fontWeight: 'bold'
+                      }}>
+                        Main
+                      </div>
+                    )}
+                    <div style={{
+                      position: 'absolute',
+                      top: 4,
+                      left: 4,
+                      background: 'rgba(0, 0, 0, 0.7)',
+                      color: '#fff',
+                      fontSize: 10,
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      fontWeight: 'bold'
+                    }}>
+                      {index + 1}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <div style={{ fontSize: 12, color: '#666', textAlign: 'center' }}>
+                💡 Tap an image to make it the main image • Tap × to remove
+              </div>
+            </div>
           )}
-          <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => setImageFile(e.target.files[0])} />
-        </button>
+        </div>
 
           <input type="text" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} style={inputBoxStyle} />
 

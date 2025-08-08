@@ -405,8 +405,10 @@ export default function EventDetailPage() {
           const mediaItems = [];
           const urls = []; // Keep for backward compatibility
           
-          // Priority 1: Check for video first
-          const videoUrl = eventData.videourl || eventData.videoUrl || eventData.VideoURL;
+          // Priority 1: Check for video first (prioritize optimized videos)
+          const videoUrl = eventData.optimizedVideourl || eventData.webMVideourl || eventData.videourl || eventData.videoUrl || eventData.VideoURL;
+          // Check if video has been optimized (Firebase Storage, WebM, or compressed)
+          const isVideoOptimized = eventData.optimizedVideourl || eventData.webMVideourl || eventData.videourl_compressed || eventData.videoUrl_compressed || eventData.VideoURL_compressed;
           logger.debug('EventDetail - Checking video fields:', {
             videourl: eventData.videourl,
             videoUrl: eventData.videoUrl,
@@ -425,6 +427,7 @@ export default function EventDetailPage() {
           
           if (videoUrl && videoUrl !== null && videoUrl.trim() !== '') {
             logger.debug('EventDetail - Video found:', videoUrl);
+            logger.debug('EventDetail - Video optimized:', isVideoOptimized);
             const cleanedVideoUrl = cleanImageUrl(videoUrl);
             logger.debug('EventDetail - Cleaned video URL:', cleanedVideoUrl);
             
@@ -440,7 +443,12 @@ export default function EventDetailPage() {
               const hasDisplayUrl = eventData.Displayurl || eventData.displayurl;
               logger.debug('EventDetail - Has displayurl?', !!hasDisplayUrl);
               
-              if (isInstagramUrl && !hasDisplayUrl) {
+              if (isVideoOptimized) {
+                // Video is optimized (WebM or compressed), use it directly
+                logger.success('EventDetail - Added optimized video to carousel');
+                mediaItems.push({ type: 'video', url: cleanedVideoUrl });
+                urls.push(cleanedVideoUrl); // For backward compatibility
+              } else if (isInstagramUrl && !hasDisplayUrl) {
                 logger.warn('EventDetail - Skipping Instagram video URL (no displayurl):', cleanedVideoUrl);
                 // Skip Instagram videos only if there's no displayurl
               } else {
@@ -471,30 +479,56 @@ export default function EventDetailPage() {
             logger.debug('EventDetail - No video URL found');
           }
           
-          // Priority 2: Process image fields
+          // Priority 1: Process company event images (if available)
+          if (eventData.imageUrls && Array.isArray(eventData.imageUrls) && eventData.imageUrls.length > 0) {
+            logger.debug('EventDetail - Processing company event images:', eventData.imageUrls);
+            
+            for (let i = 0; i < eventData.imageUrls.length; i++) {
+              const imageUrl = eventData.imageUrls[i];
+              if (imageUrl && imageUrl !== '/default-tyrolia.jpg') {
+                logger.debug(`EventDetail - Processing company image ${i + 1}:`, imageUrl);
+                
+                // Company images are already Firebase Storage URLs, no proxy needed
+                mediaItems.push({ type: 'image', url: imageUrl });
+                urls.push(imageUrl);
+                logger.success(`EventDetail - Added company image ${i + 1} to carousel`);
+              }
+            }
+          }
+          
+          // Priority 2: Process image fields (prioritize new WebP versions)
           const imageFields = [
-            { field: eventData.Image1, name: 'Image1' },
-            { field: eventData.Image2, name: 'Image2' },
-            { field: eventData.Image3, name: 'Image3' },
-            { field: eventData.Image4, name: 'Image4' },
-            { field: eventData.Image5, name: 'Image5' },
-            { field: eventData.Image6, name: 'Image6' },
-            { field: eventData.Image7, name: 'Image7' },
-            { field: eventData.Image8, name: 'Image8' },
-            { field: eventData.Image9, name: 'Image9' }
+            { field: eventData.webPImage1 || eventData.Image1_webp || eventData.Image1, name: 'Image1', isWebP: !!(eventData.webPImage1 || eventData.Image1_webp) },
+            { field: eventData.webPImage2 || eventData.Image2_webp || eventData.Image2, name: 'Image2', isWebP: !!(eventData.webPImage2 || eventData.Image2_webp) },
+            { field: eventData.webPImage3 || eventData.Image3_webp || eventData.Image3, name: 'Image3', isWebP: !!(eventData.webPImage3 || eventData.Image3_webp) },
+            { field: eventData.webPImage4 || eventData.Image4_webp || eventData.Image4, name: 'Image4', isWebP: !!(eventData.webPImage4 || eventData.Image4_webp) },
+            { field: eventData.webPImage5 || eventData.Image5_webp || eventData.Image5, name: 'Image5', isWebP: !!(eventData.webPImage5 || eventData.Image5_webp) },
+            { field: eventData.webPImage6 || eventData.Image6_webp || eventData.Image6, name: 'Image6', isWebP: !!(eventData.webPImage6 || eventData.Image6_webp) },
+            { field: eventData.webPImage7 || eventData.Image7_webp || eventData.Image7, name: 'Image7', isWebP: !!(eventData.webPImage7 || eventData.Image7_webp) },
+            { field: eventData.webPImage8 || eventData.Image8_webp || eventData.Image8, name: 'Image8', isWebP: !!(eventData.webPImage8 || eventData.Image8_webp) },
+            { field: eventData.webPImage9 || eventData.Image9_webp || eventData.Image9, name: 'Image9', isWebP: !!(eventData.webPImage9 || eventData.Image9_webp) }
           ];
           
           // Process each image field
-          for (const { field, name } of imageFields) {
+          for (const { field, name, isWebP } of imageFields) {
             if (field && field !== null) {
-              logger.debug(`EventDetail - Processing ${name}:`, field);
-              const cleanedUrl = cleanImageUrl(field);
-              if (cleanedUrl) {
-                const proxiedUrl = await proxyImageUrl(cleanedUrl);
-                if (proxiedUrl) {
-                  mediaItems.push({ type: 'image', url: proxiedUrl });
-                  urls.push(proxiedUrl); // For backward compatibility
-                  logger.success(`EventDetail - Added ${name} to carousel`);
+              logger.debug(`EventDetail - Processing ${name}${isWebP ? ' (WebP)' : ''}:`, field);
+              
+              // If it's a WebP data URL, use it directly (no proxy needed)
+              if (isWebP && field.startsWith('data:image/webp;base64,')) {
+                mediaItems.push({ type: 'image', url: field });
+                urls.push(field); // For backward compatibility
+                logger.success(`EventDetail - Added ${name} (WebP) to carousel`);
+              } else {
+                // For non-WebP or non-data URLs, use the proxy system
+                const cleanedUrl = cleanImageUrl(field);
+                if (cleanedUrl) {
+                  const proxiedUrl = await proxyImageUrl(cleanedUrl);
+                  if (proxiedUrl) {
+                    mediaItems.push({ type: 'image', url: proxiedUrl });
+                    urls.push(proxiedUrl); // For backward compatibility
+                    logger.success(`EventDetail - Added ${name}${isWebP ? ' (WebP)' : ''} to carousel`);
+                  }
                 }
               }
             } else {
@@ -502,17 +536,29 @@ export default function EventDetailPage() {
             }
           }
           
-          // Priority 3: If no media found, try Displayurl as fallback
-          if (mediaItems.length === 0 && (eventData.Displayurl || eventData.displayurl)) {
+          // Priority 3: If no media found, try Displayurl as fallback (prioritize WebP)
+          if (mediaItems.length === 0 && (eventData.webPDisplayurl || eventData.Displayurl || eventData.displayurl || eventData.Displayurl_webp)) {
             logger.debug('EventDetail - No media found, trying Displayurl as fallback');
-            const displayUrl = eventData.Displayurl || eventData.displayurl;
-            const cleanedUrl = cleanImageUrl(displayUrl);
-            if (cleanedUrl) {
-              const proxiedUrl = await proxyImageUrl(cleanedUrl);
-              if (proxiedUrl) {
-                mediaItems.push({ type: 'image', url: proxiedUrl });
-                urls.push(proxiedUrl); // For backward compatibility
-                logger.success('EventDetail - Added Displayurl to carousel');
+            
+            // Prioritize new WebP version of Displayurl
+            const displayUrl = eventData.webPDisplayurl || eventData.Displayurl_webp || eventData.Displayurl || eventData.displayurl;
+            const isWebP = !!(eventData.webPDisplayurl || eventData.Displayurl_webp);
+            
+            if (isWebP && displayUrl.startsWith('data:image/webp;base64,')) {
+              // Use WebP data URL directly
+              mediaItems.push({ type: 'image', url: displayUrl });
+              urls.push(displayUrl); // For backward compatibility
+              logger.success('EventDetail - Added Displayurl (WebP) to carousel');
+            } else {
+              // Use proxy for non-WebP URLs
+              const cleanedUrl = cleanImageUrl(displayUrl);
+              if (cleanedUrl) {
+                const proxiedUrl = await proxyImageUrl(cleanedUrl);
+                if (proxiedUrl) {
+                  mediaItems.push({ type: 'image', url: proxiedUrl });
+                  urls.push(proxiedUrl); // For backward compatibility
+                  logger.success('EventDetail - Added Displayurl to carousel');
+                }
               }
             }
           }

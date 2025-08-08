@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["http://localhost:3000", "https://nocta-d1113.web.app", "https://nocta-d1113.firebaseapp.com"],
+    "method": ["GET", "POST", "PUT", "DELETE", "HEAD"],
+    "maxAgeSeconds": 3600,
+    "responseHeader": ["Content-Type", "Access-Control-Allow-Origin", "Access-Control-Allow-Methods", "Access-Control-Allow-Headers"]
+  }
+] 
