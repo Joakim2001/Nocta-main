@@ -144,8 +144,8 @@ function EventCard({ event, navigate, showPreviousEvents }) {
     });
     
     (async () => {
-      // Check for video first
-      const videoUrl = event.videourl || event.videoUrl || event.VideoURL;
+      // Check for video first (prioritize optimized)
+      const videoUrl = event.optimizedVideourl || event.webMVideourl || event.videourl || event.videoUrl || event.VideoURL;
       if (videoUrl && videoUrl !== null && videoUrl.trim() !== '') {
         console.log('🏢 EventCard - Video found:', videoUrl);
         setVideoUrl(videoUrl);
@@ -156,9 +156,10 @@ function EventCard({ event, navigate, showPreviousEvents }) {
       
       let finalImageUrl = null;
       
-      // Try all possible image fields in order of preference
+      // Try all possible image fields in order of preference (prioritize WebP)
       const imageFields = [
-        event.Image1, event.Image0, event.Image2, event.Image3, event.Image4, event.Image5,
+        event.webPImage1, event.webPImage0, event.webPImage2, event.webPImage3, event.webPImage4, event.webPImage5,
+        event.webPDisplayurl, event.Image1, event.Image0, event.Image2, event.Image3, event.Image4, event.Image5,
         event.Displayurl, event.displayurl, event.imageUrl, event.url, event.inputurl
       ];
       
@@ -168,6 +169,14 @@ function EventCard({ event, navigate, showPreviousEvents }) {
           const cleanedUrl = cleanImageUrl(imageField);
           if (cleanedUrl) {
             try {
+              // For WebP data URLs, use directly (no proxy needed)
+              if (cleanedUrl.startsWith('data:image/webp;base64,')) {
+                console.log('🏢 EventCard - Using WebP data URL directly:', cleanedUrl.substring(0, 50) + '...');
+                finalImageUrl = cleanedUrl;
+                console.log('🏢 EventCard - Using WebP data URL:', imageField);
+                break;
+              }
+              
               // Skip Instagram profile URLs as they're not image URLs
               if (cleanedUrl.includes('instagram.com') && !cleanedUrl.includes('/p/') && !cleanedUrl.includes('.jpg') && !cleanedUrl.includes('.png')) {
                 console.log('🏢 EventCard - Skipping Instagram profile URL:', cleanedUrl);
@@ -460,13 +469,20 @@ function DeletedEventCard({ event, navigate, onRepublish, onUseAsTemplate }) {
         return;
       }
       
-      // Try to find an image
-      const imageFields = ['Image1', 'Displayurl', 'displayurl', 'imageUrl', 'url', 'inputurl'];
-      for (const field of imageFields) {
-        if (event[field]) {
-          setImageUrl(event[field]);
-          setMediaType('image');
-          break;
+      // Try to find an image - prioritize company event images
+      if (event.imageUrls && Array.isArray(event.imageUrls) && event.imageUrls.length > 0) {
+        // Use the first company image
+        setImageUrl(event.imageUrls[0]);
+        setMediaType('image');
+      } else {
+        // Fallback to other image fields
+        const imageFields = ['Image1', 'Displayurl', 'displayurl', 'imageUrl', 'url', 'inputurl'];
+        for (const field of imageFields) {
+          if (event[field]) {
+            setImageUrl(event[field]);
+            setMediaType('image');
+            break;
+          }
         }
       }
       

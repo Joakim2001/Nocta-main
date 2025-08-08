@@ -233,8 +233,8 @@ function EventCard({ event, imgError, setImgError, navigate }) {
     
     // Check for video first, then images
     (async () => {
-      // Priority 1: Check for video
-      const videoUrl = event.videourl || event.videoUrl || event.VideoURL;
+      // Priority 1: Check for video (prioritize optimized)
+      const videoUrl = event.optimizedVideourl || event.webMVideourl || event.videourl || event.videoUrl || event.VideoURL;
       if (videoUrl && videoUrl !== null && videoUrl.trim() !== '') {
         logger.debug('EventCard - Video found:', videoUrl);
         setVideoUrl(videoUrl);
@@ -244,30 +244,52 @@ function EventCard({ event, imgError, setImgError, navigate }) {
         return;
       }
       
-      // Priority 2: Try Image1
+      // Priority 1: Check for company event images first
       let finalImageUrl = null;
-      if (event.Image1 && event.Image1 !== null) {
-        logger.debug('EventCard - Processing Image1:', event.Image1);
-        const cleanedUrl = cleanImageUrl(event.Image1);
-        if (cleanedUrl) {
-          const proxiedUrl = await proxyImageUrl(cleanedUrl);
-          if (proxiedUrl) {
-            finalImageUrl = proxiedUrl;
-            logger.success('EventCard - Using Image1');
+      
+      if (event.imageUrls && Array.isArray(event.imageUrls) && event.imageUrls.length > 0) {
+        logger.debug('EventCard - Found company event images, using first image');
+        finalImageUrl = event.imageUrls[0];
+        logger.success('EventCard - Using company event image');
+      }
+      // Priority 2: Try WebP images first, then fallback to original fields
+      else {
+        // Check for WebP Image1 first
+        if (event.webPImage1 && event.webPImage1.startsWith('data:image/webp;base64,')) {
+          logger.debug('EventCard - Found WebP Image1, using directly');
+          finalImageUrl = event.webPImage1;
+          logger.success('EventCard - Using WebP Image1');
+        }
+        // Check for WebP Displayurl if no WebP Image1
+        else if (event.webPDisplayurl && event.webPDisplayurl.startsWith('data:image/webp;base64,')) {
+          logger.debug('EventCard - Found WebP Displayurl, using directly');
+          finalImageUrl = event.webPDisplayurl;
+          logger.success('EventCard - Using WebP Displayurl');
+        }
+        // Fallback to original Image1 with proxy
+        else if (event.Image1 && event.Image1 !== null) {
+          logger.debug('EventCard - Processing original Image1:', event.Image1);
+          const cleanedUrl = cleanImageUrl(event.Image1);
+          if (cleanedUrl) {
+            const proxiedUrl = await proxyImageUrl(cleanedUrl);
+            if (proxiedUrl) {
+              finalImageUrl = proxiedUrl;
+              logger.success('EventCard - Using proxied Image1');
+            }
           }
         }
       }
       
-      // Priority 3: Try Displayurl as fallback
+      // Priority 3: Try original Displayurl as final fallback
       if (!finalImageUrl && (event.Displayurl || event.displayurl)) {
-        logger.debug('EventCard - No Image1, trying Displayurl as fallback');
+        logger.debug('EventCard - No WebP images, trying original Displayurl as fallback');
         const displayUrl = event.Displayurl || event.displayurl;
         const cleanedUrl = cleanImageUrl(displayUrl);
         if (cleanedUrl) {
           const proxiedUrl = await proxyImageUrl(cleanedUrl);
           if (proxiedUrl) {
             finalImageUrl = proxiedUrl;
-            logger.success('EventCard - Using Displayurl');
+            logger.success('EventCard - Using proxied Displayurl');
           }
         }
       }

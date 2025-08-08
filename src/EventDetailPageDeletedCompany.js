@@ -141,9 +141,26 @@ export default function EventDetailPageDeletedCompany() {
     // Helper function to load event image
     async function loadEventImage(eventData) {
     
-      const imagePath = eventData.Image1 || eventData.image1;
+      // Prioritize WebP images first
+      let imagePath = null;
+      
+      // Check for WebP Image1 first
+      if (eventData.webPImage1 && eventData.webPImage1.startsWith('data:image/webp;base64,')) {
+        console.log('EventDetailPageDeletedCompany - Using WebP Image1');
+        imagePath = eventData.webPImage1;
+      }
+      // Check for WebP Displayurl if no WebP Image1
+      else if (eventData.webPDisplayurl && eventData.webPDisplayurl.startsWith('data:image/webp;base64,')) {
+        console.log('EventDetailPageDeletedCompany - Using WebP Displayurl');
+        imagePath = eventData.webPDisplayurl;
+      }
+      // Fallback to original Image1
+      else {
+        imagePath = eventData.Image1 || eventData.image1;
+      }
+      
       if (imagePath) {
-        if (imagePath.startsWith('http')) {
+        if (imagePath.startsWith('data:') || imagePath.startsWith('http')) {
           setImageUrls([imagePath]); // Store as an array for carousel
         } else {
           try {
