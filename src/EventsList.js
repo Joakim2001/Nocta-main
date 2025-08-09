@@ -443,9 +443,11 @@ function EventCard({ event, imgError, setImgError, navigate }) {
           <div className="inline-block border border-green-400 text-green-200 text-xs px-3 py-1 rounded-full bg-black/40 font-medium">
             {event.likescount > 0 ? `${event.likescount} likes` : "New Event"}
           </div>
-          <div className="inline-block border border-blue-400 text-white text-xs px-3 py-1 rounded-full bg-blue-900/60 font-medium">
-            {event.commentsCount > 0 ? `${event.commentsCount} comments` : "Be first to comment"}
-          </div>
+          {event.videoviewcount > 0 && (
+            <div className="inline-block border border-blue-400 text-white text-xs px-3 py-1 rounded-full bg-blue-900/60 font-medium">
+              {event.videoviewcount} views
+            </div>
+          )}
         </div>
       </div>
       <div
@@ -532,19 +534,23 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
           const start = getEventDate(event);
           const end = getEventDateEnd ? getEventDateEnd(event) : null;
           
-          // Debug company events in date filter
-          if (event.source === 'company-created') {
-            console.log('📅 Date filter check for company event:', {
-              title: event.title,
-              start: start,
-              startTime: start?.getTime(),
-              end: end,
-              now: now,
-              nowTime: now.getTime(),
-              comparison: start ? `${start.getTime()} >= ${now.getTime()} = ${start.getTime() >= now.getTime()}` : 'no start date',
-              passes: start ? (end ? now <= end : start >= now) : false
-            });
-          }
+                // Debug company events in date filter
+      if (event.source === 'company-created') {
+        console.log('📅 Date filter check for company event:', {
+          title: event.title,
+          start: start,
+          startTime: start?.getTime(),
+          end: end,
+          now: now,
+          nowTime: now.getTime(),
+          comparison: start ? `${start.getTime()} >= ${now.getTime()} = ${start.getTime() >= now.getTime()}` : 'no start date',
+          passes: start ? (end ? now <= end : start >= now) : false,
+          eventDate: event.eventDate,
+          eventDateEnd: event.eventDateEnd,
+          createdAt: event.createdAt,
+          timestamp: event.timestamp
+        });
+      }
           
           if (!start) return false;
           // Show if event is ongoing or in the future

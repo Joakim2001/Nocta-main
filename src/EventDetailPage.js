@@ -482,18 +482,24 @@ export default function EventDetailPage() {
           // Priority 1: Process company event images (if available)
           if (eventData.imageUrls && Array.isArray(eventData.imageUrls) && eventData.imageUrls.length > 0) {
             logger.debug('EventDetail - Processing company event images:', eventData.imageUrls);
+            logger.debug(`EventDetail - Total company images found: ${eventData.imageUrls.length}`);
             
             for (let i = 0; i < eventData.imageUrls.length; i++) {
               const imageUrl = eventData.imageUrls[i];
               if (imageUrl && imageUrl !== '/default-tyrolia.jpg') {
-                logger.debug(`EventDetail - Processing company image ${i + 1}:`, imageUrl);
+                logger.debug(`EventDetail - Processing company image ${i + 1}:`, imageUrl.substring(0, 100) + '...');
                 
-                // Company images are already Firebase Storage URLs, no proxy needed
+                // Company images are already base64 data URLs, no proxy needed
                 mediaItems.push({ type: 'image', url: imageUrl });
                 urls.push(imageUrl);
                 logger.success(`EventDetail - Added company image ${i + 1} to carousel`);
+              } else {
+                logger.debug(`EventDetail - Skipping company image ${i + 1} (default or null):`, imageUrl);
               }
             }
+          } else {
+            logger.debug('EventDetail - No company event images found or imageUrls is not an array');
+            logger.debug('EventDetail - imageUrls value:', eventData.imageUrls);
           }
           
           // Priority 2: Process image fields (prioritize new WebP versions)

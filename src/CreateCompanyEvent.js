@@ -51,9 +51,18 @@ function CreateCompanyEvent() {
 
   useEffect(() => {
     if (imageFiles.length > 0) {
-      const urls = imageFiles.map(file => URL.createObjectURL(file));
+      const urls = imageFiles.map(file => {
+        if (file instanceof File || file instanceof Blob) {
+          return URL.createObjectURL(file);
+        }
+        return null;
+      }).filter(url => url !== null);
       setImagePreview(urls);
-      return () => urls.forEach(url => URL.revokeObjectURL(url));
+      return () => urls.forEach(url => {
+        if (url) URL.revokeObjectURL(url);
+      });
+    } else {
+      setImagePreview([]);
     }
   }, [imageFiles]);
 
@@ -79,6 +88,23 @@ function CreateCompanyEvent() {
     }
      else {
       setter(value);
+    }
+  };
+
+  const handleImageSelect = (index) => {
+    if (imageFiles.length > 1) {
+      const newFiles = [...imageFiles];
+      const selectedFile = newFiles[index];
+      newFiles.splice(index, 1);
+      newFiles.unshift(selectedFile);
+      setImageFiles(newFiles);
+    }
+  };
+
+  const handleRemoveImage = (index) => {
+    if (imageFiles.length > 1) {
+      const newFiles = imageFiles.filter((_, i) => i !== index);
+      setImageFiles(newFiles);
     }
   };
 
@@ -180,18 +206,56 @@ function CreateCompanyEvent() {
         timestamp: serverTimestamp()
       };
 
+      // Debug logging to verify image data
+      console.log(`📸 Event creation - Total images to save: ${imageUrls.length}`);
+      console.log(`📸 Event creation - imageUrls array:`, imageUrls.map((url, i) => `Image ${i + 1}: ${url.substring(0, 50)}...`));
+      console.log(`📸 Event creation - imageUrl (main): ${imageUrl.substring(0, 50)}...`);
+
       if (dateMode === 'simple') {
         eventData.eventDates = multiDates.map(d => new Date(d)).sort((a,b) => a - b);
-        // Set the first date as the main eventDate for filtering
+        // Set the first date as the main eventDate for filtering, combining with startTime
         if (multiDates.filter(Boolean).length > 0) {
-          eventData.eventDate = new Date(multiDates.filter(Boolean)[0]);
+          const baseDate = new Date(multiDates.filter(Boolean)[0]);
+          
+          // Combine the date with the startTime
+          if (startTime) {
+            const [hours, minutes] = startTime.split(':').map(Number);
+            baseDate.setHours(hours, minutes, 0, 0);
+          }
+          
+          eventData.eventDate = baseDate;
+          console.log('📅 Created eventDate with startTime:', {
+            originalDate: multiDates.filter(Boolean)[0],
+            startTime: startTime,
+            finalEventDate: baseDate,
+            finalEventDateString: baseDate.toISOString()
+          });
         }
       } else if (dateMode === 'range') {
         const [rangeStart, rangeEnd] = dateRange;
+        
+        // Combine start date with startTime
+        if (startTime) {
+          const [hours, minutes] = startTime.split(':').map(Number);
+          rangeStart.setHours(hours, minutes, 0, 0);
+        }
         eventData.eventDate = rangeStart;
+        
         if (rangeEnd) {
+          // Combine end date with endTime
+          if (endTime) {
+            const [hours, minutes] = endTime.split(':').map(Number);
+            rangeEnd.setHours(hours, minutes, 0, 0);
+          }
           eventData.eventDateEnd = rangeEnd;
         }
+        
+        console.log('📅 Created eventDate range with times:', {
+          startTime: startTime,
+          endTime: endTime,
+          finalEventDate: rangeStart,
+          finalEventDateEnd: rangeEnd
+        });
       }
 
       await addDoc(collection(db, 'Instagram_posts'), eventData);
@@ -260,14 +324,14 @@ function CreateCompanyEvent() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#3b1a5c' }}>
+    <div style={{ background: '#3b1a5c', minHeight: '100vh', overflowY: 'auto' }}>
       {/* Top Bar */}
-      <div style={{ maxWidth: 448, margin: '0 auto', background: '#0f172a', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', padding: '16px' }}>
+      <div style={{ maxWidth: 448, margin: '0 auto', background: '#0f172a', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', padding: '16px', position: 'sticky', top: 0, zIndex: 100 }}>
         <span onClick={() => navigate(-1)} style={{ color: '#fff', fontSize: 24, cursor: 'pointer' }}>‹</span>
         <h2 style={{ color: '#fff', fontWeight: 700, fontSize: 20, textAlign: 'center', flexGrow: 1 }}>Create Post</h2>
       </div>
 
-      <div style={{ background: '#3b1a5c', paddingTop: '24px', paddingBottom: '24px' }}>
+      <div style={{ background: '#3b1a5c', paddingTop: '24px', paddingBottom: '100px' }}>
         <div style={{ maxWidth: 400, margin: '0 auto', padding: '0 16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
         {/* Image Upload Section */}
@@ -323,20 +387,11 @@ function CreateCompanyEvent() {
             
             <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => {
               const newFiles = Array.from(e.target.files);
-              setImageFiles(prev => [...prev, ...newFiles]);
-              
-              // Create previews for new files
-              const newPreviews = [];
-              newFiles.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                  newPreviews.push(reader.result);
-                  if (newPreviews.length === newFiles.length) {
-                    setImagePreview(prev => [...prev, ...newPreviews]);
-                  }
-                };
-                reader.readAsDataURL(file);
-              });
+              if (newFiles.length > 0) {
+                setImageFiles(prev => [...prev, ...newFiles]);
+                // Clear the input value to allow selecting the same file again
+                e.target.value = '';
+              }
             }} />
           </button>
 
@@ -349,7 +404,7 @@ function CreateCompanyEvent() {
                 </span>
               </div>
               
-              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0' }}>
+              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0', maxWidth: '100%' }}>
                 {imagePreview.map((preview, index) => (
                   <div key={index} style={{ position: 'relative', flexShrink: 0 }}>
                     <img 
@@ -363,25 +418,10 @@ function CreateCompanyEvent() {
                         border: index === 0 ? '3px solid #4b1fa2' : '1px solid #ddd',
                         cursor: 'pointer'
                       }}
-                      onClick={() => {
-                        // Move this image to first position (make it main)
-                        const newFiles = [...imageFiles];
-                        const newPreviews = [...imagePreview];
-                        const movedFile = newFiles.splice(index, 1)[0];
-                        const movedPreview = newPreviews.splice(index, 1)[0];
-                        newFiles.unshift(movedFile);
-                        newPreviews.unshift(movedPreview);
-                        setImageFiles(newFiles);
-                        setImagePreview(newPreviews);
-                      }}
+                      onClick={() => handleImageSelect(index)}
                     />
                     <button
-                      onClick={() => {
-                        const newFiles = imageFiles.filter((_, i) => i !== index);
-                        setImageFiles(newFiles);
-                        const newPreviews = imagePreview.filter((_, i) => i !== index);
-                        setImagePreview(newPreviews);
-                      }}
+                      onClick={() => handleRemoveImage(index)}
                       style={{
                         position: 'absolute',
                         top: -8,

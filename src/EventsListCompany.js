@@ -357,18 +357,20 @@ function EventCard({ event, navigate, showPreviousEvents }) {
           }}>
             {event.likescount > 0 ? `${event.likescount} likes` : "New Event"}
           </div>
-          <div style={{
-            display: 'inline-block',
-            border: '1px solid #60a5fa',
-            color: 'white',
-            fontSize: 12,
-            padding: '4px 12px',
-            borderRadius: 9999,
-            background: 'rgba(30, 58, 138, 0.6)',
-            fontWeight: 500
-          }}>
-            Be first to comment
-          </div>
+          {event.videoviewcount > 0 && (
+            <div style={{
+              display: 'inline-block',
+              border: '1px solid #60a5fa',
+              color: 'white',
+              fontSize: 12,
+              padding: '4px 12px',
+              borderRadius: 9999,
+              background: 'rgba(30, 58, 138, 0.6)',
+              fontWeight: 500
+            }}>
+              {event.videoviewcount} views
+            </div>
+          )}
         </div>
 
         {showPreviousEvents && (
@@ -1063,16 +1065,16 @@ function EventsListCompany() {
               <button
               onClick={() => setShowDeletedEvents(true)}
                 style={{
-                background: showDeletedEvents ? '#dc2626' : 'transparent',
-                color: showDeletedEvents ? '#fff' : '#dc2626',
-                border: showDeletedEvents ? '2px solid #fff' : '2px solid #dc2626',
+                background: showDeletedEvents ? '#2a0845' : 'transparent',
+                color: showDeletedEvents ? '#fff' : '#2a0845',
+                border: showDeletedEvents ? '2px solid #fff' : '2px solid #2a0845',
                 fontWeight: 700, 
                 fontSize: 16, 
                 borderRadius: 24, 
                                     padding: '8px 16px',
                 boxShadow: showDeletedEvents ? '0 2px 12px #0004' : 'none', 
                 letterSpacing: 0.5, 
-                textShadow: showDeletedEvents ? '0 2px 8px #dc262699' : 'none',
+                textShadow: showDeletedEvents ? '0 2px 8px #3E29F099' : 'none',
                 cursor: 'pointer'
               }}
             >
