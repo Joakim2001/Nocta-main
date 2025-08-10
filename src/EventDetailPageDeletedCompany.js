@@ -144,19 +144,33 @@ export default function EventDetailPageDeletedCompany() {
       // Prioritize WebP images first
       let imagePath = null;
       
-      // Check for WebP Image1 first
-      if (eventData.webPImage1 && eventData.webPImage1.startsWith('data:image/webp;base64,')) {
-        console.log('EventDetailPageDeletedCompany - Using WebP Image1');
-        imagePath = eventData.webPImage1;
+      // Check for WebP images in order of preference
+      const webPFields = [
+        eventData.webPImage1, eventData.webPImage0, eventData.webPImage2, eventData.webPImage3, 
+        eventData.webPImage4, eventData.webPImage5, eventData.webPImage6, eventData.webPDisplayurl
+      ];
+      
+      for (const webPField of webPFields) {
+        if (webPField && webPField.startsWith('data:image/webp;base64,')) {
+          console.log('EventDetailPageDeletedCompany - Using WebP image');
+          imagePath = webPField;
+          break;
+        }
       }
-      // Check for WebP Displayurl if no WebP Image1
-      else if (eventData.webPDisplayurl && eventData.webPDisplayurl.startsWith('data:image/webp;base64,')) {
-        console.log('EventDetailPageDeletedCompany - Using WebP Displayurl');
-        imagePath = eventData.webPDisplayurl;
-      }
-      // Fallback to original Image1
-      else {
-        imagePath = eventData.Image1 || eventData.image1;
+      
+      // If no WebP images found, try original images
+      if (!imagePath) {
+        const originalFields = [
+          eventData.Image1, eventData.Image0, eventData.Image2, eventData.Image3, 
+          eventData.Image4, eventData.Image5, eventData.Image6, eventData.image1
+        ];
+        
+        for (const originalField of originalFields) {
+          if (originalField) {
+            imagePath = originalField;
+            break;
+          }
+        }
       }
       
       if (imagePath) {

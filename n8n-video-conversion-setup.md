@@ -15,6 +15,15 @@ const processedItems = [];
 for (const item of items) {
   const processedItem = { ...item.json };
   
+  // Get the document ID - this is CRITICAL for maintaining the connection!
+  const docId = item.json.id || item.json.docId || item.json.documentId;
+  
+  if (!docId) {
+    console.log(`❌ ERROR: No document ID found for item: ${item.json.title || 'Unknown'}`);
+    console.log(`   Available fields:`, Object.keys(item.json));
+    continue; // Skip this item if no document ID
+  }
+  
   // Collect only valid video URLs
   const videoFields = ['videourl', 'videoUrl', 'VideoURL'];
   const validVideos = [];
@@ -35,8 +44,9 @@ for (const item of items) {
   
   processedItem.validVideos = validVideos;
   processedItem.validVideoCount = validVideos.length;
+  processedItem.docId = docId; // Store document ID for the next step
   
-  console.log(`Item ${processedItem.id}: Found ${processedItem.validVideoCount} valid videos`);
+  console.log(`Item ${docId}: Found ${processedItem.validVideoCount} valid videos`);
   
   processedItems.push({ json: processedItem });
 }
@@ -55,7 +65,8 @@ return processedItems;
 - **Body (JSON):**
 ```json
 {
-  "videos": "={{ $json.validVideos }}"
+  "videos": "={{ $json.validVideos }}",
+  "docId": "={{ $json.docId }}"
 }
 ```
 
@@ -72,7 +83,7 @@ for (const item of items) {
   // Get the original data and optimization results
   const originalData = item.json;
   
-  console.log('Processing item:', originalData.id);
+  console.log('Processing item:', originalData.docId || originalData.id);
   console.log('Video optimization success:', originalData.success);
   
   if (originalData.success && originalData.optimizedVideos) {
@@ -122,8 +133,8 @@ return processedItems;
 
 ## Workflow Order:
 1. **Google Sheets** → Get event data
-2. **Filter Valid Videos** (Code) → Filter video URLs
-3. **Optimize Videos** (HTTP Request) → Download and store in Firebase Storage
+2. **Filter Valid Videos** (Code) → Filter video URLs + extract docId
+3. **Optimize Videos** (HTTP Request) → Download and store in Firebase Storage with docId
 4. **Extract Optimized Videos to Fields** (Code) → Extract to individual fields
 5. **Your existing AI processing nodes** → Continue with your workflow
 6. **Firestore Save** → Save with optimized videos
@@ -133,9 +144,15 @@ return processedItems;
 - 🎬 **Reliable access** (stored in Firebase Storage)
 - 🔒 **No expiration** (Firebase Storage URLs don't expire)
 - 📱 **Better mobile performance** (optimized delivery)
+- 🔗 **Maintains connection** between Firestore documents and Storage files
 
 ## Testing:
 After deployment, check your Firestore documents for:
 - `optimizedVideourl` field with `https://storage.googleapis.com/...` values
 - `videoOptimizationComplete: true`
-- `videoOptimizationDate` timestamp 
+- `videoOptimizationDate` timestamp
+
+## Important Notes:
+- **Document ID is required** - make sure your Google Sheets data includes an `id` field
+- **File naming now includes docId** - files will be named like `compressed_ABC123_videourl_1703123456789.mp4`
+- **Automatic Firestore updates** - the functions now automatically update your documents with the new URLs 

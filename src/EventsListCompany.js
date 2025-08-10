@@ -158,8 +158,11 @@ function EventCard({ event, navigate, showPreviousEvents }) {
       
       // Try all possible image fields in order of preference (prioritize WebP)
       const imageFields = [
-        event.webPImage1, event.webPImage0, event.webPImage2, event.webPImage3, event.webPImage4, event.webPImage5,
-        event.webPDisplayurl, event.Image1, event.Image0, event.Image2, event.Image3, event.Image4, event.Image5,
+        // WebP images first (highest priority)
+        event.webPImage1, event.webPImage0, event.webPImage2, event.webPImage3, event.webPImage4, event.webPImage5, event.webPImage6,
+        event.webPDisplayurl,
+        // Original images as fallback
+        event.Image1, event.Image0, event.Image2, event.Image3, event.Image4, event.Image5, event.Image6,
         event.Displayurl, event.displayurl, event.imageUrl, event.url, event.inputurl
       ];
       
@@ -197,7 +200,7 @@ function EventCard({ event, navigate, showPreviousEvents }) {
               else if (cleanedUrl.startsWith('/') || cleanedUrl.includes(window.location.origin)) {
                 console.log('🏢 EventCard - Trying direct local URL:', cleanedUrl);
                 finalImageUrl = cleanedUrl;
-                console.log('🏢 EventCard - Using direct local URL:', imageField);
+                console.log('🏢 EventCard - Using direct local URL:', cleanedUrl);
                 break;
               }
               // For other external URLs, try proxy

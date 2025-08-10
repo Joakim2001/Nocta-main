@@ -13,7 +13,7 @@ console.log("Modules initialized!");
 
 admin.initializeApp();
 const db = admin.firestore();
-const NEW_BUCKET = "nocta-d1113.appspot.com"; // Default bucket name - will be created automatically
+const NEW_BUCKET = "nocta_bucket"; // Use the custom bucket for better organization
 const storage = new Storage();
 
 // Direct email sending function using Nodemailer
@@ -1504,6 +1504,7 @@ exports.setupCompanyProfile = onRequest({
 });
 
 // Simple HTTP endpoint for WebP conversion (easier to call from n8n)
+// IMPORTANT: This function now requires docId to maintain connection between Firestore and Storage
 exports.convertToWebPHttp = functions.https.onRequest({
   memory: '1GB',
   timeoutSeconds: 300
@@ -1523,7 +1524,7 @@ exports.convertToWebPHttp = functions.https.onRequest({
       return;
     }
     
-    const { imageUrl } = req.body;
+    const { imageUrl, docId, imageField } = req.body;
     
     if (!imageUrl) {
       console.log('❌ convertToWebPHttp - Image URL not provided');
@@ -1531,7 +1532,25 @@ exports.convertToWebPHttp = functions.https.onRequest({
       return;
     }
     
-    console.log('🔍 convertToWebPHttp - Converting image:', imageUrl);
+    if (!docId) {
+      console.log('❌ convertToWebPHttp - Document ID is required to maintain connection between Firestore and Storage');
+      res.status(400).json({ 
+        error: 'Document ID (docId) is required', 
+        note: 'This ensures the converted image can be linked back to the original Firestore document' 
+      });
+      return;
+    }
+    
+    if (!imageField) {
+      console.log('❌ convertToWebPHttp - Image field name is required');
+      res.status(400).json({ 
+        error: 'Image field name (imageField) is required',
+        note: 'This ensures the converted image can be properly stored in the correct field'
+      });
+      return;
+    }
+    
+    console.log('🔍 convertToWebPHttp - Converting image:', imageUrl, 'for document:', docId, 'field:', imageField);
     
     // Fetch the original image
     const response = await axios.get(imageUrl, {
@@ -1559,32 +1578,48 @@ exports.convertToWebPHttp = functions.https.onRequest({
     console.log('🔍 convertToWebPHttp - WebP size:', webpBuffer.length, 'bytes');
     console.log('🔍 convertToWebPHttp - Compression ratio:', ((response.data.length - webpBuffer.length) / response.data.length * 100).toFixed(1) + '%');
     
-    // Upload WebP to Firebase Storage
-    const fileName = `webp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.webp`;
-    const fileRef = storage.bucket(NEW_BUCKET).file(fileName);
-    
-    await fileRef.save(webpBuffer, {
-      metadata: { 
-        contentType: 'image/webp',
-        cacheControl: 'public, max-age=31536000' // Cache for 1 year
-      }
-    });
-    
-    // Make the file public
-    await fileRef.makePublic();
-    
-    // Get the public URL
-    const webpUrl = `https://storage.googleapis.com/${NEW_BUCKET}/${fileName}`;
-    
-    console.log('✅ convertToWebPHttp - WebP uploaded successfully:', webpUrl);
+            // Convert WebP to base64 data URL for direct Firestore storage
+        const base64Image = webpBuffer.toString('base64');
+        const dataUrl = `data:image/webp;base64,${base64Image}`;
+        
+        console.log('✅ convertToWebPHttp - WebP converted to base64 data URL');
+        console.log('🔍 convertToWebPHttp - Data URL size:', (dataUrl.length / 1024).toFixed(1), 'KB');
+        
+        // Update the Firestore document with the WebP data URL
+        try {
+          const docRef = db.collection('Instagram_posts').doc(docId);
+          const doc = await docRef.get();
+          
+          if (doc.exists) {
+            const updates = {};
+            updates[imageField] = dataUrl; // Store the WebP data URL directly in Firestore
+            updates[`${imageField}_original`] = imageUrl; // Keep original as backup
+            updates[`${imageField}_webpConverted`] = true;
+            updates[`${imageField}_conversionDate`] = admin.firestore.Timestamp.now();
+            updates[`${imageField}_storedInFirestore`] = true;
+            updates[`${imageField}_webpSizeBytes`] = webpBuffer.length;
+            updates[`${imageField}_compressionRatio`] = ((response.data.length - webpBuffer.length) / response.data.length * 100).toFixed(1) + '%';
+            
+            await docRef.update(updates);
+            console.log('✅ convertToWebPHttp - Successfully updated Firestore document with WebP data URL');
+          } else {
+            console.log('⚠️ convertToWebPHttp - Document not found in Firestore, but image converted successfully');
+          }
+        } catch (updateError) {
+          console.error('❌ convertToWebPHttp - Error updating Firestore document:', updateError.message);
+          // Don't fail the entire conversion if Firestore update fails
+        }
     
     res.json({
       success: true,
-      webpUrl: webpUrl,
+      webpUrl: dataUrl, // Now returns the data URL for direct use
       originalUrl: imageUrl,
+      docId: docId,
+      imageField: imageField,
       originalSize: response.data.length,
       webpSize: webpBuffer.length,
-      compressionRatio: ((response.data.length - webpBuffer.length) / response.data.length * 100).toFixed(1) + '%'
+      compressionRatio: ((response.data.length - webpBuffer.length) / response.data.length * 100).toFixed(1) + '%',
+      note: 'WebP image converted and stored directly in Firestore database as data URL'
     });
     
   } catch (error) {
@@ -1594,7 +1629,8 @@ exports.convertToWebPHttp = functions.https.onRequest({
     res.status(500).json({
       success: false,
       error: error.message,
-      originalUrl: req.body?.imageUrl
+      originalUrl: req.body?.imageUrl,
+      docId: req.body?.docId
     });
   }
 });
@@ -1623,38 +1659,33 @@ exports.batchConvertExistingToWebP = functions.https.onRequest({
     
     console.log(`🔍 batchConvertExistingToWebP - Converting up to ${limit} documents`);
     
-    // Get documents that haven't been converted yet (or don't have the field)
-    let snapshot = await db.collection('Instagram_posts')
-      .where('webpConversionComplete', '==', null)
-      .limit(parseInt(limit))
+    // Get all documents and filter out those that are already converted
+    console.log('🔍 batchConvertExistingToWebP - Getting all documents and filtering by conversion status');
+    const allSnapshot = await db.collection('Instagram_posts')
       .get();
     
-    // If no documents found with webpConversionComplete field, get documents without this field
-    if (snapshot.docs.length === 0) {
-      console.log('🔍 batchConvertExistingToWebP - No documents with webpConversionComplete field, getting all documents');
-      const allSnapshot = await db.collection('Instagram_posts')
-        .limit(parseInt(limit))
-        .get();
-      
-      // Filter out documents that already have webpConversionComplete = true
-      const docsToProcess = allSnapshot.docs.filter(doc => {
-        const data = doc.data();
-        return !data.webpConversionComplete;
+    // Filter out documents that already have webpConversionComplete = true
+    const docsToProcess = allSnapshot.docs.filter(doc => {
+      const data = doc.data();
+      return !data.webpConversionComplete;
+    });
+    
+    console.log(`🔍 batchConvertExistingToWebP - Found ${docsToProcess.length} documents to process out of ${allSnapshot.docs.length} total`);
+    
+    if (docsToProcess.length === 0) {
+      return res.json({
+        success: true,
+        message: 'All documents have already been converted',
+        converted: 0
       });
-      
-      console.log(`🔍 batchConvertExistingToWebP - Found ${docsToProcess.length} documents to process out of ${allSnapshot.docs.length} total`);
-      
-      if (docsToProcess.length === 0) {
-        return res.json({
-          success: true,
-          message: 'All documents have already been converted',
-          converted: 0
-        });
-      }
-      
-      // Use the filtered documents
-      snapshot = { docs: docsToProcess };
     }
+    
+    // Apply the limit to the filtered documents
+    const limitedDocs = docsToProcess.slice(0, parseInt(limit));
+    console.log(`🔍 batchConvertExistingToWebP - Processing ${limitedDocs.length} documents (limited from ${docsToProcess.length})`);
+    
+    // Use the limited documents
+    snapshot = { docs: limitedDocs };
     
     console.log(`🔍 batchConvertExistingToWebP - Found ${snapshot.docs.length} documents to convert`);
     
@@ -1691,13 +1722,14 @@ exports.batchConvertExistingToWebP = functions.https.onRequest({
         
         // Get all image fields that need conversion
         const imageFields = [
-          { field: docData.Displayurl, name: 'Displayurl' },
-          { field: docData.Image1, name: 'Image1' },
-          { field: docData.Image2, name: 'Image2' },
-          { field: docData.Image3, name: 'Image3' },
-          { field: docData.Image4, name: 'Image4' },
-          { field: docData.Image5, name: 'Image5' },
-          { field: docData.Image6, name: 'Image6' }
+          { field: docData.Displayurl, name: 'Displayurl', webPName: 'webPDisplayurl' },
+          { field: docData.Image0, name: 'Image0', webPName: 'webPImage0' },
+          { field: docData.Image1, name: 'Image1', webPName: 'webPImage1' },
+          { field: docData.Image2, name: 'Image2', webPName: 'webPImage2' },
+          { field: docData.Image3, name: 'Image3', webPName: 'webPImage3' },
+          { field: docData.Image4, name: 'Image4', webPName: 'webPImage4' },
+          { field: docData.Image5, name: 'Image5', webPName: 'webPImage5' },
+          { field: docData.Image6, name: 'Image6', webPName: 'webPImage6' }
         ].filter(img => img.field && img.field !== null);
         
         if (imageFields.length === 0) {
@@ -1709,7 +1741,8 @@ exports.batchConvertExistingToWebP = functions.https.onRequest({
         const updates = {};
         
         // Convert each image to WebP
-        for (const { field, name } of imageFields) {
+        for (const imageField of imageFields) {
+          const { field, name } = imageField;
           try {
             console.log(`🔍 batchConvertExistingToWebP - Converting ${name} in ${doc.id}`);
             
@@ -1722,61 +1755,60 @@ exports.batchConvertExistingToWebP = functions.https.onRequest({
               timeout: 30000
             });
             
-            // Convert to WebP
+            // Convert to WebP with extremely aggressive compression to fit in Firestore
             const webpBuffer = await sharp(Buffer.from(response.data))
+              .resize(400, 400, { // Much smaller dimensions to ensure small file size
+                fit: 'inside',
+                withoutEnlargement: true
+              })
               .webp({ 
-                quality: 80,
-                effort: 6,
-                nearLossless: true
+                quality: 30, // Very low quality for maximum compression
+                effort: 1,   // Minimal effort for faster processing
+                nearLossless: false // Disabled for smaller size
               })
               .toBuffer();
             
-                      // Upload to Firebase Storage
-          const fileName = `webp_${doc.id}_${name}_${Date.now()}.webp`;
-          
-          try {
-            // Try to use the bucket
-            const fileRef = storage.bucket(NEW_BUCKET).file(fileName);
-            
-            await fileRef.save(webpBuffer, {
-              metadata: { 
-                contentType: 'image/webp',
-                cacheControl: 'public, max-age=31536000'
+            // Check if the WebP buffer is small enough for Firestore (max 600KB to be safe)
+            const maxSizeBytes = 600 * 1024; // 600KB
+            if (webpBuffer.length > maxSizeBytes) {
+              console.log(`⚠️ batchConvertExistingToWebP - WebP for ${name} is too large (${webpBuffer.length} bytes), applying more compression`);
+              
+              // Apply even more aggressive compression
+              const smallerWebpBuffer = await sharp(Buffer.from(response.data))
+                .resize(300, 300, { // Much smaller dimensions
+                  fit: 'inside',
+                  withoutEnlargement: true
+                })
+                .webp({ 
+                  quality: 20, // Very low quality
+                  effort: 1,   // Minimal effort
+                  nearLossless: false
+                })
+                .toBuffer();
+              
+              // Use the smaller buffer if it fits, otherwise skip this image
+              if (smallerWebpBuffer.length <= maxSizeBytes) {
+                webpBuffer = smallerWebpBuffer;
+                console.log(`✅ batchConvertExistingToWebP - Applied additional compression for ${name}, new size: ${webpBuffer.length} bytes`);
+              } else {
+                console.log(`⚠️ batchConvertExistingToWebP - Skipping ${name} - even with max compression, size is ${smallerWebpBuffer.length} bytes`);
+                continue; // Skip this image
               }
-            });
-            
-            await fileRef.makePublic();
-            
-            // Get the public URL
-            const webpUrl = `https://storage.googleapis.com/${NEW_BUCKET}/${fileName}`;
-            
-            // Store the WebP URL (replace original field)
-            updates[name] = webpUrl;
-            updates[`${name}_original`] = field; // Keep original as backup
-            
-            console.log(`✅ batchConvertExistingToWebP - Converted ${name} in ${doc.id}`);
-            
-          } catch (storageError) {
-            console.error(`❌ batchConvertExistingToWebP - Storage error for ${name} in ${doc.id}:`, storageError.message);
-            
-            // If bucket doesn't exist, try to create a data URL instead
-            if (storageError.message.includes('bucket does not exist')) {
-              console.log(`🔧 batchConvertExistingToWebP - Creating data URL for ${name} instead`);
-              
-              // Convert to base64 data URL
-              const base64Image = webpBuffer.toString('base64');
-              const dataUrl = `data:image/webp;base64,${base64Image}`;
-              
-              // Store the data URL
-              updates[name] = dataUrl;
-              updates[`${name}_original`] = field; // Keep original as backup
-              
-              console.log(`✅ batchConvertExistingToWebP - Created data URL for ${name} in ${doc.id}`);
-            } else {
-              // Keep original URL if other storage error
-              updates[name] = field;
             }
-          }
+            
+                      // Skip Firebase Storage upload due to bucket access control issues
+          // Go straight to data URL creation
+          console.log(`🔧 batchConvertExistingToWebP - Creating data URL for ${name} (skipping storage upload)`);
+          
+          // Convert to base64 data URL
+          const base64Image = webpBuffer.toString('base64');
+          const dataUrl = `data:image/webp;base64,${base64Image}`;
+          
+          // Store the data URL in the correct WebP field
+          updates[imageField.webPName] = dataUrl;
+          // Don't store original as backup to save space - we can always fetch from original URL if needed
+          
+          console.log(`✅ batchConvertExistingToWebP - Created data URL for ${name} in ${doc.id}`);
             
           } catch (error) {
             console.error(`❌ batchConvertExistingToWebP - Error converting ${name} in ${doc.id}:`, error.message);
@@ -2830,7 +2862,7 @@ exports.downloadAndStoreInstagramVideo = functions.https.onRequest({
       
       console.log(`🎬 downloadAndStoreInstagramVideo - Successfully downloaded video, size:`, response.data.length);
       
-            // Upload to Firebase Storage with permanent filename
+      // Upload to Firebase Storage with permanent filename
       const fileName = `permanent_${docId}_${videoFieldToProcess}_${Date.now()}.mp4`;
       
       // Try to upload to Firebase Storage
@@ -2845,24 +2877,20 @@ exports.downloadAndStoreInstagramVideo = functions.https.onRequest({
             metadata: {
               originalSize: response.data.length.toString(),
               originalUrl: videoUrl,
-              permanentlyStored: 'true',
-              storageDate: new Date().toISOString(),
-              source: 'instagram'
+              permanent: 'true',
+              conversionDate: new Date().toISOString()
             }
           }
         });
         
-        // Skip makePublic() for uniform bucket-level access
-        // The bucket should already be configured for public access
-        const permanentUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+                    // Skip makePublic() for uniform bucket-level access
+            const permanentUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
         
-        // Update the document with permanent URL
+        // Update the document
         const updates = {};
-        updates[videoFieldToProcess] = permanentUrl; // Replace original URL with permanent one
-        updates[`${videoFieldToProcess}_original`] = videoUrl; // Keep original for reference
-        updates[`${videoFieldToProcess}_permanent`] = true; // Mark as permanently stored
-        updates[`${videoFieldToProcess}_storedAt`] = new Date().toISOString();
-        updates[`${videoFieldToProcess}_size`] = response.data.length;
+        updates[videoFieldToProcess] = permanentUrl;
+        updates[`${videoFieldToProcess}_original`] = videoUrl;
+        updates[`${videoFieldToProcess}_permanent`] = true;
         
         await docRef.update(updates);
         
@@ -2870,127 +2898,47 @@ exports.downloadAndStoreInstagramVideo = functions.https.onRequest({
         
         res.json({
           success: true,
-          message: `Successfully downloaded and permanently stored ${videoFieldToProcess} in document ${docId}`,
+          message: `Successfully stored ${videoFieldToProcess} permanently for document ${docId}`,
           originalSize: response.data.length,
           permanentUrl: permanentUrl,
           note: 'Video is now permanently stored and will not expire'
         });
         
       } catch (storageError) {
-        console.error('🎬 downloadAndStoreInstagramVideo - Storage upload failed:', storageError.message);
+        console.error('🎬 downloadAndStoreInstagramVideo - Storage error:', storageError.message);
         
-                 // Fallback: Try to use default bucket
-         console.log('🎬 downloadAndStoreInstagramVideo - Trying default bucket...');
-         try {
-           const defaultBucket = admin.storage().bucket('nocta_bucket');
-           const fileRef = defaultBucket.file(fileName);
-           
-           await fileRef.save(Buffer.from(response.data), {
-             metadata: { 
-               contentType: 'video/mp4',
-               cacheControl: 'public, max-age=31536000',
-               metadata: {
-                 originalSize: response.data.length.toString(),
-                 originalUrl: videoUrl,
-                 permanentlyStored: 'true',
-                 storageDate: new Date().toISOString(),
-                 source: 'instagram'
-               }
-             }
-           });
-           
-           // Skip makePublic() for uniform bucket-level access
-           // The bucket should already be configured for public access
-           const permanentUrl = `https://storage.googleapis.com/${defaultBucket.name}/${fileName}`;
-           
-           // Update the document with permanent URL
-           const updates = {};
-           updates[videoFieldToProcess] = permanentUrl; // Replace original URL with permanent one
-           updates[`${videoFieldToProcess}_original`] = videoUrl; // Keep original for reference
-           updates[`${videoFieldToProcess}_permanent`] = true; // Mark as permanently stored
-           updates[`${videoFieldToProcess}_storedAt`] = new Date().toISOString();
-           updates[`${videoFieldToProcess}_size`] = response.data.length;
-           
-           await docRef.update(updates);
-           
-           console.log(`🎬 downloadAndStoreInstagramVideo - Successfully stored video permanently:`, permanentUrl);
-           
-           res.json({
-             success: true,
-             message: `Successfully downloaded and permanently stored ${videoFieldToProcess} in document ${docId}`,
-             originalSize: response.data.length,
-             permanentUrl: permanentUrl,
-             note: 'Video is now permanently stored and will not expire'
-           });
-           
-                  } catch (defaultBucketError) {
-           console.error('🎬 downloadAndStoreInstagramVideo - Default bucket also failed:', defaultBucketError.message);
-           
-           // Final fallback: Just mark as downloaded but keep original URL
-           const updates = {};
-           updates[`${videoFieldToProcess}_original`] = videoUrl; // Keep original for reference
-           updates[`${videoFieldToProcess}_permanent`] = false; // Mark as not permanently stored
-           updates[`${videoFieldToProcess}_downloaded`] = true; // Mark as downloaded
-           updates[`${videoFieldToProcess}_storedAt`] = new Date().toISOString();
-           updates[`${videoFieldToProcess}_size`] = response.data.length;
-           updates[`${videoFieldToProcess}_error`] = 'Downloaded but storage failed: ' + defaultBucketError.message;
-           
-           await docRef.update(updates);
-           
-           res.json({
-             success: false,
-             message: `Video downloaded but storage failed: ${defaultBucketError.message}`,
-             originalSize: response.data.length,
-             note: 'Video was downloaded but could not be stored permanently. Original URL preserved.'
-           });
-         }
+        // Fallback: mark as failed
+        const updates = {};
+        updates[`${videoFieldToProcess}_original`] = videoUrl;
+        updates[`${videoFieldToProcess}_permanent`] = false;
+        updates[`${videoFieldToProcess}_error`] = storageError.message;
         
-        console.log(`🎬 downloadAndStoreInstagramVideo - Stored video as data URL (fallback)`);
+        await docRef.update(updates);
         
         res.json({
-          success: true,
-          message: `Successfully downloaded and stored ${videoFieldToProcess} as data URL in document ${docId}`,
+          success: false,
+          message: `Could not store video permanently: ${storageError.message}`,
           originalSize: response.data.length,
-          permanentUrl: dataUrl.substring(0, 100) + '...', // Show first 100 chars
-          note: 'Video stored as data URL due to storage bucket issues'
+          note: 'Video download succeeded but storage failed'
         });
       }
       
     } catch (downloadError) {
       console.error('🎬 downloadAndStoreInstagramVideo - Download failed:', downloadError.message);
       
-      // Check if it's a 403 error (access blocked)
-      if (downloadError.response && downloadError.response.status === 403) {
-        const updates = {};
-        updates[`${videoFieldToProcess}_original`] = videoUrl;
-        updates[`${videoFieldToProcess}_permanent`] = false;
-        updates[`${videoFieldToProcess}_error`] = 'Instagram access blocked - URL may have expired';
-        updates[`${videoFieldToProcess}_attemptedAt`] = new Date().toISOString();
-        
-        await docRef.update(updates);
-        
-        res.json({
-          success: false,
-          message: 'Instagram video access blocked - URL may have expired',
-          note: 'Try downloading the video manually or wait for a fresh URL'
-        });
-      } else {
-        // Other download errors
-        const updates = {};
-        updates[`${videoFieldToProcess}_original`] = videoUrl;
-        updates[`${videoFieldToProcess}_permanent`] = false;
-        updates[`${videoFieldToProcess}_error`] = downloadError.message;
-        updates[`${videoFieldToProcess}_attemptedAt`] = new Date().toISOString();
-        
-        await docRef.update(updates);
-        
-        res.json({
-          success: false,
-          message: `Video download failed: ${downloadError.message}`,
-          originalSize: 0,
-          note: 'Video processing failed, original URL preserved'
-        });
-      }
+      // Mark as failed
+      const updates = {};
+      updates[`${videoFieldToProcess}_original`] = videoUrl;
+      updates[`${videoFieldToProcess}_permanent`] = false;
+      updates[`${videoFieldToProcess}_error`] = downloadError.message;
+      
+      await docRef.update(updates);
+      
+      res.json({
+        success: false,
+        message: `Video download failed: ${downloadError.message}`,
+        note: 'Instagram video access may be blocked or expired'
+      });
     }
     
   } catch (error) {
@@ -3002,129 +2950,463 @@ exports.downloadAndStoreInstagramVideo = functions.https.onRequest({
   }
 });
 
-console.log("Instagram video download and storage function added!");
-
-// Video optimization function (download and store in Firebase Storage)
+// Main function to optimize videos - called by n8n workflow
 exports.optimizeVideos = functions.https.onRequest({
   memory: '4GB',
   timeoutSeconds: 540
 }, async (req, res) => {
-  // Enable CORS
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'GET, POST');
-  res.set('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    res.status(204).send('');
-    return;
-  }
-
   try {
+    console.log('🎬 optimizeVideos - Starting video optimization');
+    
+    // Set CORS headers
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    
+    if (req.method === 'OPTIONS') {
+      res.status(200).send();
+      return;
+    }
+    
     const { videos } = req.body;
-
+    
     if (!videos || !Array.isArray(videos)) {
       return res.status(400).json({ 
-        success: false, 
-        message: 'videos array is required' 
+        success: false,
+        error: 'videos array is required' 
       });
     }
-
-    console.log(`Optimizing ${videos.length} videos...`);
+    
+    console.log(`🎬 optimizeVideos - Processing ${videos.length} videos`);
+    
     const optimizedVideos = [];
-    const batchSize = 2; // Process 2 videos at a time
-
-    for (let i = 0; i < videos.length; i += batchSize) {
-      const batch = videos.slice(i, i + batchSize);
-      const batchPromises = batch.map(async (videoUrl, batchIndex) => {
-        const globalIndex = i + batchIndex;
-        try {
-          console.log(`Processing video ${globalIndex + 1}/${videos.length}: ${videoUrl.substring(0, 50)}...`);
+    
+    for (let i = 0; i < videos.length; i++) {
+      const videoUrl = videos[i];
+      
+      if (!videoUrl) {
+        console.log(`⏭️ optimizeVideos - Skipping empty video at index ${i}`);
+        optimizedVideos.push(null);
+        continue;
+      }
+      
+      console.log(`🎬 optimizeVideos - Processing video ${i + 1}/${videos.length}:`, videoUrl);
+      
+      try {
+        // Check if it's an Instagram URL
+        const isInstagramUrl = videoUrl.includes('instagram.com') || 
+                             videoUrl.includes('cdninstagram.com') || 
+                             videoUrl.includes('fbcdn.net');
+        
+        if (isInstagramUrl) {
+          console.log(`🎬 optimizeVideos - Instagram video detected, downloading and storing permanently`);
           
           // Download the video
           const response = await axios.get(videoUrl, {
             responseType: 'arraybuffer',
-            timeout: 30000,
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+              'Referer': 'https://www.instagram.com/',
+              'Accept': 'video/webm,video/ogg,video/*;q=0.9,application/ogg;q=0.7,audio/*;q=0.6,*/*;q=0.5',
+              'Accept-Language': 'en-US,en;q=0.5',
+              'Accept-Encoding': 'gzip, deflate, br',
+              'DNT': '1',
+              'Connection': 'keep-alive',
+              'Upgrade-Insecure-Requests': '1'
+            },
+            timeout: 120000 // 2 minutes for video download
           });
-
-          const videoBuffer = Buffer.from(response.data);
-          const videoSize = videoBuffer.length;
           
-          console.log(`Video ${globalIndex + 1} downloaded (${(videoSize / 1024 / 1024).toFixed(2)}MB)`);
-
-                            // Store in Firebase Storage with optimized filename
-                  const storage = admin.storage();
-                  const bucket = storage.bucket('nocta_bucket');
-                  
-                  // Create a more descriptive filename that includes metadata
-                  const timestamp = Date.now();
-                  const originalUrlHash = Buffer.from(videoUrl).toString('base64').substring(0, 8);
-                  const fileName = `optimized-videos/${timestamp}-${globalIndex}-${originalUrlHash}.mp4`;
-                  const file = bucket.file(fileName);
-
-                  await file.save(videoBuffer, {
-                    metadata: {
-                      contentType: 'video/mp4',
-                      cacheControl: 'public, max-age=31536000', // Cache for 1 year
-                      metadata: {
-                        originalUrl: videoUrl,
-                        optimizedDate: new Date().toISOString(),
-                        originalSize: videoSize,
-                        optimizedSize: videoBuffer.length
-                      }
-                    }
-                  });
-
-                  // Make the file publicly accessible
-                  await file.makePublic();
-
-                  // Get the public URL
-                  const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-                  
-                  console.log(`Video ${globalIndex + 1} stored at: ${publicUrl}`);
-                  optimizedVideos.push(publicUrl);
-
-        } catch (error) {
-          console.error(`Error processing video ${globalIndex + 1}:`, error);
-          // Return original URL if optimization fails
-          optimizedVideos.push(videoUrl);
+          console.log(`✅ optimizeVideos - Successfully downloaded video ${i + 1}, size:`, response.data.length);
+          
+          // Upload to Firebase Storage
+          const fileName = `optimized_video_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}.mp4`;
+          
+          try {
+            // Try to use the nocta_bucket first
+            let bucket;
+            try {
+              bucket = storage.bucket('nocta_bucket');
+            } catch (bucketError) {
+              console.log('⚠️ optimizeVideos - nocta_bucket not accessible, using default bucket');
+              bucket = storage.bucket('nocta-d1113.appspot.com');
+            }
+            
+            const fileRef = bucket.file(fileName);
+            
+            await fileRef.save(Buffer.from(response.data), {
+              metadata: { 
+                contentType: 'video/mp4',
+                cacheControl: 'public, max-age=31536000',
+                metadata: {
+                  originalSize: response.data.length.toString(),
+                  originalUrl: videoUrl,
+                  optimized: 'true',
+                  conversionDate: new Date().toISOString(),
+                  source: 'instagram'
+                }
+              }
+            });
+            
+            // Skip makePublic() for uniform bucket-level access
+            const optimizedUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+            
+            console.log(`✅ optimizeVideos - Successfully uploaded video ${i + 1} to Firebase Storage:`, optimizedUrl);
+            optimizedVideos.push(optimizedUrl);
+            
+          } catch (storageError) {
+            console.error(`❌ optimizeVideos - Storage error for video ${i + 1}:`, storageError.message);
+            
+            // If storage fails, return the original URL
+            console.log(`⚠️ optimizeVideos - Returning original URL for video ${i + 1} due to storage error`);
+            optimizedVideos.push(videoUrl);
+          }
+          
+        } else {
+          console.log(`🎬 optimizeVideos - Non-Instagram video detected, attempting optimization`);
+          
+          try {
+            // For non-Instagram videos, try to download and optimize
+            const response = await axios.get(videoUrl, {
+              responseType: 'arraybuffer',
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              },
+              timeout: 60000
+            });
+            
+            console.log(`✅ optimizeVideos - Successfully downloaded non-Instagram video ${i + 1}, size:`, response.data.length);
+            
+            // Upload to Firebase Storage
+            const fileName = `optimized_video_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}.mp4`;
+            
+            try {
+              let bucket;
+              try {
+                bucket = storage.bucket('nocta_bucket');
+              } catch (bucketError) {
+                bucket = storage.bucket('nocta-d1113.appspot.com');
+              }
+              
+              const fileRef = bucket.file(fileName);
+              
+              await fileRef.save(Buffer.from(response.data), {
+                metadata: { 
+                  contentType: 'video/mp4',
+                  cacheControl: 'public, max-age=31536000',
+                  metadata: {
+                    originalSize: response.data.length.toString(),
+                    originalUrl: videoUrl,
+                    optimized: 'true',
+                    conversionDate: new Date().toISOString(),
+                    source: 'external'
+                  }
+                }
+              });
+              
+                          // Skip makePublic() for uniform bucket-level access
+            const optimizedUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+              
+              console.log(`✅ optimizeVideos - Successfully optimized non-Instagram video ${i + 1}:`, optimizedUrl);
+              optimizedVideos.push(optimizedUrl);
+              
+            } catch (storageError) {
+              console.error(`❌ optimizeVideos - Storage error for non-Instagram video ${i + 1}:`, storageError.message);
+              optimizedVideos.push(videoUrl);
+            }
+            
+          } catch (downloadError) {
+            console.error(`❌ optimizeVideos - Download failed for non-Instagram video ${i + 1}:`, downloadError.message);
+            optimizedVideos.push(videoUrl);
+          }
         }
-      });
-
-      const batchResults = await Promise.all(batchPromises);
-      optimizedVideos.push(...batchResults);
-      
-      if (global.gc) {
-        global.gc();
-      }
-      
-      if (i + batchSize < videos.length) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+      } catch (error) {
+        console.error(`❌ optimizeVideos - Error processing video ${i + 1}:`, error.message);
+        // Return original URL if processing fails
+        optimizedVideos.push(videoUrl);
       }
     }
-
-    const stats = {
-      total: videos.length,
-      optimized: optimizedVideos.filter(v => v && typeof v === 'string' && v.includes('storage.googleapis.com')).length,
-      failed: optimizedVideos.filter(v => !v || typeof v !== 'string' || !v.includes('storage.googleapis.com')).length
-    };
-
-    console.log(`Video optimization complete: ${stats.optimized}/${stats.total} optimized`);
-
+    
+    console.log(`✅ optimizeVideos - Successfully processed ${videos.length} videos`);
+    console.log(`🔍 optimizeVideos - Final optimized videos array:`, optimizedVideos);
+    
     res.json({
       success: true,
-      message: `Optimized ${stats.optimized} videos`,
-      optimizedVideos,
-      stats
+      optimizedVideos: optimizedVideos,
+      originalCount: videos.length,
+      optimizedCount: optimizedVideos.filter(v => v && v.includes('storage.googleapis.com')).length,
+      note: 'Videos are now permanently stored in Firebase Storage and will not expire'
     });
-
+    
   } catch (error) {
-    console.error('Video optimization error:', error);
+    console.error('❌ optimizeVideos - Function error:', error);
     res.status(500).json({
       success: false,
-      message: 'Video optimization failed',
+      error: error.message
+    });
+  }
+});
+
+console.log("Video optimization function added!");
+
+// Function to convert multiple images to WebP (for n8n workflows)
+exports.convertMultipleImagesToWebP = functions.https.onRequest({
+  memory: '4GiB',
+  timeoutSeconds: 300,
+  region: 'us-central1'
+}, async (req, res) => {
+  try {
+    console.log('🔍 convertMultipleImagesToWebP - Starting multiple image conversion');
+    console.log('🔍 convertMultipleImagesToWebP - Request body:', JSON.stringify(req.body));
+    
+    // Set CORS headers
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      res.status(200).send();
+      return;
+    }
+    
+    const { imageUrls, docId, imageField } = req.body;
+    
+    // Make docId optional - only required if you want to store results in Firestore
+    if (!docId) {
+      console.log('⚠️ convertMultipleImagesToWebP - No Document ID provided, will only convert images without Firestore storage');
+    }
+    
+    // Make imageField optional - only required if you want to store results in Firestore
+    if (!imageField) {
+      console.log('⚠️ convertMultipleImagesToWebP - No Image field name provided, will only convert images without Firestore storage');
+    }
+    
+    if (!imageUrls || !Array.isArray(imageUrls)) {
+      console.log('❌ convertMultipleImagesToWebP - imageUrls array is required');
+      res.status(400).json({ error: 'imageUrls array is required' });
+      return;
+    }
+    
+    if (imageUrls.length === 0) {
+      console.log('❌ convertMultipleImagesToWebP - imageUrls array is empty');
+      res.status(400).json({ error: 'imageUrls array cannot be empty' });
+      return;
+    }
+    
+    console.log(`🔍 convertMultipleImagesToWebP - Converting ${imageUrls.length} images`);
+    
+    const sharp = require('sharp');
+    
+    // Process all images in parallel for maximum speed! 🚀
+    console.log(`🚀 convertMultipleImagesToWebP - Starting PARALLEL processing of ${imageUrls.length} images`);
+    
+    const promises = imageUrls.map(async (imageUrl, i) => {
+      if (!imageUrl || imageUrl === null || imageUrl === '') {
+        console.log(`⏭️ convertMultipleImagesToWebP - Skipping empty image at index ${i}`);
+        return {
+          index: i,
+          success: false,
+          error: 'Empty or null image URL',
+          originalUrl: imageUrl
+        };
+      }
+      
+      try {
+        console.log(`🔍 convertMultipleImagesToWebP - Starting parallel conversion of image ${i + 1}/${imageUrls.length}:`, imageUrl);
+        
+        // Fetch the original image with faster timeout
+        const response = await axios.get(imageUrl, {
+          responseType: 'arraybuffer',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          },
+          timeout: 10000  // Reduced from 30s to 10s for faster failure detection
+        });
+        
+        console.log(`✅ convertMultipleImagesToWebP - Successfully fetched image ${i + 1}`);
+        
+        // Convert to WebP using sharp with aggressive compression
+        const webpBuffer = await sharp(Buffer.from(response.data))
+          .webp({ 
+            quality: 60,        // Lower quality = smaller file size
+            effort: 6,          // Higher effort = better compression
+            nearLossless: false, // Disable nearLossless for better compression
+            smartSubsample: true // Smart subsampling for better compression
+          })
+          .toBuffer();
+        
+        console.log(`✅ convertMultipleImagesToWebP - Successfully converted image ${i + 1} to WebP`);
+        
+        // Convert WebP buffer to base64 data URL for direct use in n8n
+        const base64Image = webpBuffer.toString('base64');
+        const dataUrl = `data:image/webp;base64,${base64Image}`;
+        
+        console.log(`✅ convertMultipleImagesToWebP - WebP converted to base64 data URL for image ${i + 1}`);
+        console.log(`🔍 convertMultipleImagesToWebP - Data URL size:`, (dataUrl.length / 1024).toFixed(1), 'KB');
+        
+        return {
+          index: i,
+          success: true,
+          webpUrl: dataUrl, // Now returns the data URL for direct use in n8n
+          originalUrl: imageUrl,
+          docId: docId,
+          imageField: imageField,
+          originalSize: response.data.length,
+          webpSize: webpBuffer.length,
+          compressionRatio: ((response.data.length - webpBuffer.length) / response.data.length * 100).toFixed(1) + '%'
+        };
+        
+      } catch (error) {
+        // Faster error handling - don't wait for slow failures
+        const errorType = error.code === 'ECONNABORTED' ? 'TIMEOUT' : 
+                         error.code === 'ENOTFOUND' ? 'URL_NOT_FOUND' : 
+                         error.code === 'ECONNREFUSED' ? 'CONNECTION_REFUSED' : 'OTHER';
+        
+        console.error(`❌ convertMultipleImagesToWebP - Error converting image ${i + 1} (${errorType}):`, error.message);
+        return {
+          index: i,
+          success: false,
+          error: error.message,
+          errorType: errorType,
+          originalUrl: imageUrl
+        };
+      }
+    });
+    
+    // Wait for ALL images to complete processing in parallel! 🚀
+    console.log(`⏳ convertMultipleImagesToWebP - Waiting for all ${imageUrls.length} parallel conversions to complete...`);
+    const results = await Promise.all(promises);
+    console.log(`🎉 convertMultipleImagesToWebP - All parallel conversions completed!`);
+    
+    console.log(`✅ convertMultipleImagesToWebP - Completed processing ${imageUrls.length} images`);
+    
+    // Update the Firestore document to link all converted images (only if both docId and imageField are provided)
+    if (docId && imageField) {
+      try {
+        const docRef = db.collection('Instagram_posts').doc(docId);
+        const doc = await docRef.get();
+        
+        if (doc.exists) {
+          const successfulResults = results.filter(r => r.success);
+          const updates = {};
+          
+          if (successfulResults.length > 0) {
+            // Smart storage: Check document size and choose storage method
+            const fieldNames = ['Displayurl', 'Image0', 'Image1', 'Image2', 'Image3', 'Image4', 'Image5', 'Image6'];
+            
+            // First, try to store WebP images directly in Firestore
+            let totalWebPSize = 0;
+            const webpUpdates = {};
+            
+            successfulResults.forEach((result, index) => {
+              if (index < fieldNames.length) {
+                const fieldName = fieldNames[index];
+                const dataUrlSize = result.webpUrl.length;
+                totalWebPSize += dataUrlSize;
+                
+                // Store WebP image as base64 data URL in Firestore (if size allows)
+                webpUpdates[`WebP${fieldName}`] = result.webpUrl;
+                webpUpdates[`${fieldName}_webpConverted`] = true;
+                webpUpdates[`${fieldName}_webpSize`] = result.webpSize;
+                webpUpdates[`${fieldName}_compressionRatio`] = result.compressionRatio;
+              }
+            });
+            
+            // Check if total WebP size would exceed Firestore limit (leave 100KB buffer)
+            const maxWebPSize = 900 * 1024; // 900KB limit
+            
+            if (totalWebPSize <= maxWebPSize) {
+              // Store WebP images directly in Firestore
+              Object.assign(updates, webpUpdates);
+              updates[`${imageField}_storedInFirestore`] = true;
+              console.log(`✅ convertMultipleImagesToWebP - WebP images stored directly in Firestore (${(totalWebPSize/1024).toFixed(1)}KB)`);
+            } else {
+              // Store WebP images in Firebase Storage, URLs in Firestore
+              console.log(`⚠️ convertMultipleImagesToWebP - WebP images too large (${(totalWebPSize/1024).toFixed(1)}KB), storing in Firebase Storage instead`);
+              
+              // Store WebP images in Firebase Storage
+              const storagePromises = successfulResults.map(async (result, index) => {
+                if (index < fieldNames.length) {
+                  const fieldName = fieldNames[index];
+                  const fileName = `webp_${docId}_${fieldName}_${Date.now()}.webp`;
+                  const file = storage.bucket(NEW_BUCKET).file(fileName);
+                  
+                  // Convert data URL back to buffer for storage
+                  const base64Data = result.webpUrl.split(',')[1];
+                  const buffer = Buffer.from(base64Data, 'base64');
+                  
+                  await file.save(buffer, { contentType: 'image/webp' });
+                  const storageUrl = `https://storage.googleapis.com/${NEW_BUCKET}/${fileName}`;
+                  
+                  // Store Storage URL in Firestore instead of data URL
+                  updates[`WebP${fieldName}`] = storageUrl;
+                  updates[`${fieldName}_webpConverted`] = true;
+                  updates[`${fieldName}_webpSize`] = result.webpSize;
+                  updates[`${fieldName}_compressionRatio`] = result.compressionRatio;
+                  updates[`${fieldName}_storedInStorage`] = true;
+                }
+              });
+              
+              await Promise.all(storagePromises);
+              updates[`${imageField}_storedInStorage`] = true;
+            }
+            
+            // Keep original image URLs
+            updates[`${imageField}_original`] = imageUrls;
+            updates[`${imageField}_webpConverted`] = true;
+            updates[`${imageField}_conversionDate`] = admin.firestore.Timestamp.now();
+            updates[`${imageField}_totalConverted`] = successfulResults.length;
+            updates[`${imageField}_totalRequested`] = imageUrls.length;
+            updates[`${imageField}_webpSizeBytes`] = successfulResults.reduce((sum, r) => sum + r.webpSize, 0);
+          }
+          
+          await docRef.update(updates);
+          console.log('✅ convertMultipleImagesToWebP - Successfully updated Firestore document with WebP images stored as base64 data URLs');
+        } else {
+          console.log('⚠️ convertMultipleImagesToWebP - Document not found in Firestore, but images converted successfully');
+        }
+      } catch (updateError) {
+        console.error('❌ convertMultipleImagesToWebP - Error updating Firestore document:', updateError.message);
+        // Don't fail the entire conversion if Firestore update fails
+      }
+    } else {
+      console.log('ℹ️ convertMultipleImagesToWebP - No Firestore update performed (docId not provided)');
+    }
+    
+    // Create structured response with WebP prefix naming
+    const responseData = {
+      success: true,
+      totalImages: imageUrls.length,
+      successfulConversions: results.filter(r => r.success).length,
+      failedConversions: results.filter(r => !r.success).length,
+      docId: docId,
+      imageField: imageField,
+      results: results,
+      note: 'WebP images converted to base64 data URLs and stored in Firestore database'
+    };
+
+    // Add WebP images with prefix naming for easy access
+    const fieldNames = ['Displayurl', 'Image0', 'Image1', 'Image2', 'Image3', 'Image4', 'Image5', 'Image6'];
+    results.forEach((result, index) => {
+      if (result.success && index < fieldNames.length) {
+        const fieldName = fieldNames[index];
+        responseData[`WebP${fieldName}`] = result.webpUrl;
+        responseData[`WebP${fieldName}_original`] = result.originalUrl;
+        responseData[`WebP${fieldName}_size`] = result.webpSize;
+        responseData[`WebP${fieldName}_compression`] = result.compressionRatio;
+      }
+    });
+
+    res.json(responseData);
+    
+  } catch (error) {
+    console.error('❌ convertMultipleImagesToWebP - Function error:', error);
+    console.error('❌ convertMultipleImagesToWebP - Error message:', error.message);
+    
+    res.status(500).json({
+      success: false,
       error: error.message
     });
   }

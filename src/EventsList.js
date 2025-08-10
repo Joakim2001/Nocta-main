@@ -233,16 +233,35 @@ function EventCard({ event, imgError, setImgError, navigate }) {
     
     // Check for video first, then images
     (async () => {
-      // Priority 1: Check for video (prioritize optimized)
-      const videoUrl = event.optimizedVideourl || event.webMVideourl || event.videourl || event.videoUrl || event.VideoURL;
-      if (videoUrl && videoUrl !== null && videoUrl.trim() !== '') {
-        logger.debug('EventCard - Video found:', videoUrl);
-        setVideoUrl(videoUrl);
-        setMediaType('video');
-        setImageProcessed(true);
-        logger.success('EventCard - Using video');
-        return;
-      }
+          // Priority 1: Check for video (prioritize optimized)
+    const videoUrl = event.optimizedVideourl || event.webMVideourl || event.videourl || event.videoUrl || event.VideoURL;
+    
+    // ENHANCED DEBUGGING FOR VIDEO FIELDS
+    console.log('🎬 VIDEO DEBUG - EventCard (EventsList):', {
+      eventId: event.id,
+      title: event.title || event.caption?.substring(0, 30),
+      // Check all possible video fields
+      optimizedVideourl: event.optimizedVideourl,
+      webMVideourl: event.webMVideourl,
+      videourl: event.videourl,
+      videoUrl: event.videoUrl,
+      VideoURL: event.VideoURL,
+      // Final selected video URL
+      finalVideoUrl: videoUrl,
+      // Check source
+      isFromStorage: (event.optimizedVideourl || event.webMVideourl)?.includes('storage.googleapis.com'),
+      isFromDatabase: (event.videourl || event.videoUrl || event.VideoURL)?.includes('instagram.com') || 
+                     (event.videourl || event.videoUrl || event.VideoURL)?.includes('cdninstagram.com')
+    });
+    
+    if (videoUrl && videoUrl !== null && videoUrl.trim() !== '') {
+      logger.debug('EventCard - Video found:', videoUrl);
+      setVideoUrl(videoUrl);
+      setMediaType('video');
+      setImageProcessed(true);
+      logger.success('EventCard - Using video');
+      return;
+    }
       
       // Priority 1: Check for company event images first
       let finalImageUrl = null;
@@ -254,42 +273,41 @@ function EventCard({ event, imgError, setImgError, navigate }) {
       }
       // Priority 2: Try WebP images first, then fallback to original fields
       else {
-        // Check for WebP Image1 first
-        if (event.webPImage1 && event.webPImage1.startsWith('data:image/webp;base64,')) {
-          logger.debug('EventCard - Found WebP Image1, using directly');
-          finalImageUrl = event.webPImage1;
-          logger.success('EventCard - Using WebP Image1');
-        }
-        // Check for WebP Displayurl if no WebP Image1
-        else if (event.webPDisplayurl && event.webPDisplayurl.startsWith('data:image/webp;base64,')) {
-          logger.debug('EventCard - Found WebP Displayurl, using directly');
-          finalImageUrl = event.webPDisplayurl;
-          logger.success('EventCard - Using WebP Displayurl');
-        }
-        // Fallback to original Image1 with proxy
-        else if (event.Image1 && event.Image1 !== null) {
-          logger.debug('EventCard - Processing original Image1:', event.Image1);
-          const cleanedUrl = cleanImageUrl(event.Image1);
-          if (cleanedUrl) {
-            const proxiedUrl = await proxyImageUrl(cleanedUrl);
-            if (proxiedUrl) {
-              finalImageUrl = proxiedUrl;
-              logger.success('EventCard - Using proxied Image1');
-            }
+        // Check for WebP images in order of preference
+        const webPFields = [
+          event.webPImage1, event.webPImage0, event.webPImage2, event.webPImage3, 
+          event.webPImage4, event.webPImage5, event.webPImage6, event.webPDisplayurl
+        ];
+        
+        for (const webPField of webPFields) {
+          if (webPField && webPField.startsWith('data:image/webp;base64,')) {
+            logger.debug('EventCard - Found WebP image, using directly');
+            finalImageUrl = webPField;
+            logger.success('EventCard - Using WebP image');
+            break;
           }
         }
-      }
-      
-      // Priority 3: Try original Displayurl as final fallback
-      if (!finalImageUrl && (event.Displayurl || event.displayurl)) {
-        logger.debug('EventCard - No WebP images, trying original Displayurl as fallback');
-        const displayUrl = event.Displayurl || event.displayurl;
-        const cleanedUrl = cleanImageUrl(displayUrl);
-        if (cleanedUrl) {
-          const proxiedUrl = await proxyImageUrl(cleanedUrl);
-          if (proxiedUrl) {
-            finalImageUrl = proxiedUrl;
-            logger.success('EventCard - Using proxied Displayurl');
+        
+        // If no WebP images found, try original images with proxy
+        if (!finalImageUrl) {
+          const originalFields = [
+            event.Image1, event.Image0, event.Image2, event.Image3, 
+            event.Image4, event.Image5, event.Image6, event.Displayurl
+          ];
+          
+          for (const originalField of originalFields) {
+            if (originalField && originalField !== null) {
+              logger.debug('EventCard - Processing original image:', originalField);
+              const cleanedUrl = cleanImageUrl(originalField);
+              if (cleanedUrl) {
+                const proxiedUrl = await proxyImageUrl(cleanedUrl);
+                if (proxiedUrl) {
+                  finalImageUrl = proxiedUrl;
+                  logger.success('EventCard - Using proxied original image');
+                  break;
+                }
+              }
+            }
           }
         }
       }

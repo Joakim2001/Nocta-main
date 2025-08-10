@@ -409,6 +409,27 @@ export default function EventDetailPage() {
           const videoUrl = eventData.optimizedVideourl || eventData.webMVideourl || eventData.videourl || eventData.videoUrl || eventData.VideoURL;
           // Check if video has been optimized (Firebase Storage, WebM, or compressed)
           const isVideoOptimized = eventData.optimizedVideourl || eventData.webMVideourl || eventData.videourl_compressed || eventData.videoUrl_compressed || eventData.VideoURL_compressed;
+          
+          // ENHANCED DEBUGGING FOR VIDEO FIELDS
+          console.log('🎬 VIDEO DEBUG - EventDetailPage:', {
+            eventId: eventData.id,
+            title: eventData.title || eventData.caption?.substring(0, 30),
+            // Check all possible video fields
+            optimizedVideourl: eventData.optimizedVideourl,
+            webMVideourl: eventData.webMVideourl,
+            videourl: eventData.videourl,
+            videoUrl: eventData.videoUrl,
+            VideoURL: eventData.VideoURL,
+            // Final selected video URL
+            finalVideoUrl: videoUrl,
+            // Check if optimized
+            isVideoOptimized: isVideoOptimized,
+            // Check source
+            isFromStorage: (eventData.optimizedVideourl || eventData.webMVideourl)?.includes('storage.googleapis.com'),
+            isFromDatabase: (eventData.videourl || eventData.videoUrl || eventData.VideoURL)?.includes('instagram.com') || 
+                           (eventData.videourl || eventData.videoUrl || eventData.VideoURL)?.includes('cdninstagram.com')
+          });
+          
           logger.debug('EventDetail - Checking video fields:', {
             videourl: eventData.videourl,
             videoUrl: eventData.videoUrl,
@@ -504,41 +525,56 @@ export default function EventDetailPage() {
           
           // Priority 2: Process image fields (prioritize new WebP versions)
           const imageFields = [
-            { field: eventData.webPImage1 || eventData.Image1_webp || eventData.Image1, name: 'Image1', isWebP: !!(eventData.webPImage1 || eventData.Image1_webp) },
-            { field: eventData.webPImage2 || eventData.Image2_webp || eventData.Image2, name: 'Image2', isWebP: !!(eventData.webPImage2 || eventData.Image2_webp) },
-            { field: eventData.webPImage3 || eventData.Image3_webp || eventData.Image3, name: 'Image3', isWebP: !!(eventData.webPImage3 || eventData.Image3_webp) },
-            { field: eventData.webPImage4 || eventData.Image4_webp || eventData.Image4, name: 'Image4', isWebP: !!(eventData.webPImage4 || eventData.Image4_webp) },
-            { field: eventData.webPImage5 || eventData.Image5_webp || eventData.Image5, name: 'Image5', isWebP: !!(eventData.webPImage5 || eventData.Image5_webp) },
-            { field: eventData.webPImage6 || eventData.Image6_webp || eventData.Image6, name: 'Image6', isWebP: !!(eventData.webPImage6 || eventData.Image6_webp) },
-            { field: eventData.webPImage7 || eventData.Image7_webp || eventData.Image7, name: 'Image7', isWebP: !!(eventData.webPImage7 || eventData.Image7_webp) },
-            { field: eventData.webPImage8 || eventData.Image8_webp || eventData.Image8, name: 'Image8', isWebP: !!(eventData.webPImage8 || eventData.Image8_webp) },
-            { field: eventData.webPImage9 || eventData.Image9_webp || eventData.Image9, name: 'Image9', isWebP: !!(eventData.webPImage9 || eventData.Image9_webp) }
+            { field: eventData.webPImage1, name: 'webPImage1', isWebP: true, fallback: eventData.Image1 },
+            { field: eventData.webPImage0, name: 'webPImage0', isWebP: true, fallback: eventData.Image0 },
+            { field: eventData.webPImage2, name: 'webPImage2', isWebP: true, fallback: eventData.Image2 },
+            { field: eventData.webPImage3, name: 'webPImage3', isWebP: true, fallback: eventData.Image3 },
+            { field: eventData.webPImage4, name: 'webPImage4', isWebP: true, fallback: eventData.Image4 },
+            { field: eventData.webPImage5, name: 'webPImage5', isWebP: true, fallback: eventData.Image5 },
+            { field: eventData.webPImage6, name: 'webPImage6', isWebP: true, fallback: eventData.Image6 },
+            { field: eventData.webPImage7, name: 'webPImage7', isWebP: true, fallback: eventData.Image7 },
+            { field: eventData.webPImage8, name: 'webPImage8', isWebP: true, fallback: eventData.Image8 },
+            { field: eventData.webPImage9, name: 'webPImage9', isWebP: true, fallback: eventData.Image9 }
           ];
           
-          // Process each image field
-          for (const { field, name, isWebP } of imageFields) {
-            if (field && field !== null) {
-              logger.debug(`EventDetail - Processing ${name}${isWebP ? ' (WebP)' : ''}:`, field);
-              
-              // If it's a WebP data URL, use it directly (no proxy needed)
-              if (isWebP && field.startsWith('data:image/webp;base64,')) {
-                mediaItems.push({ type: 'image', url: field });
-                urls.push(field); // For backward compatibility
-                logger.success(`EventDetail - Added ${name} (WebP) to carousel`);
-              } else {
-                // For non-WebP or non-data URLs, use the proxy system
-                const cleanedUrl = cleanImageUrl(field);
-                if (cleanedUrl) {
-                  const proxiedUrl = await proxyImageUrl(cleanedUrl);
-                  if (proxiedUrl) {
-                    mediaItems.push({ type: 'image', url: proxiedUrl });
-                    urls.push(proxiedUrl); // For backward compatibility
-                    logger.success(`EventDetail - Added ${name}${isWebP ? ' (WebP)' : ''} to carousel`);
-                  }
+          // Enhanced logging for WebP image debugging
+          logger.debug('EventDetail - WebP Image Fields Check:', {
+            webPImage1: eventData.webPImage1 ? '✅ Available' : '❌ Not available',
+            webPImage0: eventData.webPImage0 ? '✅ Available' : '❌ Not available',
+            webPImage2: eventData.webPImage2 ? '✅ Available' : '❌ Not available',
+            webPImage3: eventData.webPImage3 ? '✅ Available' : '❌ Not available',
+            webPImage4: eventData.webPImage4 ? '✅ Available' : '❌ Not available',
+            webPImage5: eventData.webPImage5 ? '✅ Available' : '❌ Not available',
+            webPImage6: eventData.webPImage6 ? '✅ Available' : '❌ Not available',
+            webPImage7: eventData.webPImage7 ? '✅ Available' : '❌ Not available',
+            webPImage8: eventData.webPImage8 ? '✅ Available' : '❌ Not available',
+            webPImage9: eventData.webPImage9 ? '✅ Available' : '❌ Not available',
+            webPDisplayurl: eventData.webPDisplayurl ? '✅ Available' : '❌ Not available'
+          });
+          
+          // Process each image field - prioritize WebP, then fallback to original
+          for (const { field, name, isWebP, fallback } of imageFields) {
+            // First try WebP field
+            if (field && field !== null && field.startsWith('data:image/webp;base64,')) {
+              logger.debug(`EventDetail - Processing ${name} (WebP):`, field.substring(0, 50) + '...');
+              mediaItems.push({ type: 'image', url: field });
+              urls.push(field);
+              logger.success(`EventDetail - Added ${name} (WebP) to carousel`);
+            }
+            // If no WebP, try fallback original image
+            else if (fallback && fallback !== null) {
+              logger.debug(`EventDetail - Processing ${name} fallback (original):`, fallback.substring(0, 50) + '...');
+              const cleanedUrl = cleanImageUrl(fallback);
+              if (cleanedUrl) {
+                const proxiedUrl = await proxyImageUrl(cleanedUrl);
+                if (proxiedUrl) {
+                  mediaItems.push({ type: 'image', url: proxiedUrl });
+                  urls.push(proxiedUrl);
+                  logger.success(`EventDetail - Added ${name} fallback (original) to carousel`);
                 }
               }
             } else {
-              logger.debug(`EventDetail - ${name} is null, skipping`);
+              logger.debug(`EventDetail - ${name} and fallback are null, skipping`);
             }
           }
           
@@ -572,6 +608,13 @@ export default function EventDetailPage() {
           // Set final media items or default
           logger.debug('EventDetail - Final media items before setting state:', mediaItems);
           logger.debug('EventDetail - Final URLs before setting state:', urls);
+          
+          // Summary of image types loaded
+          const webpCount = mediaItems.filter(item => item.type === 'image' && item.url.startsWith('data:image/webp;base64,')).length;
+          const originalCount = mediaItems.filter(item => item.type === 'image' && !item.url.startsWith('data:image/webp;base64,')).length;
+          const videoCount = mediaItems.filter(item => item.type === 'video').length;
+          
+          logger.info(`EventDetail - Media Summary: ${webpCount} WebP images, ${originalCount} original images, ${videoCount} videos`);
           
           if (mediaItems.length > 0) {
             setMediaItems(mediaItems);

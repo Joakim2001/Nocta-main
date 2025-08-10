@@ -1,66 +1,56 @@
 // Process each item and convert images to WebP using Firebase function
+// UPDATED: Maintains same number of items, processes images one by one
 const results = [];
 
 for (const item of $input.all()) {
-  // Updated to include all the fields you mentioned
-  const imageFields = ['Displayurl', 'Image1', 'Image2', 'Image3', 'Image4', 'Image5', 'Image6'];
-  const updatedItem = { ...item.json };
+  const data = item.json;
   
-  console.log(`🔄 Processing item: ${item.json.title || item.json.id || 'Unknown'}`);
+  // Get the document ID - this is CRITICAL!
+  const docId = data.id || data.docId || data.documentId;
   
+  if (!docId) {
+    console.log(`❌ ERROR: No document ID found for item: ${data.title || 'Unknown'}`);
+    console.log(`   Available fields:`, Object.keys(data));
+    // Still add the item even if no docId, but mark it as error
+    data.hasError = true;
+    data.errorMessage = 'No document ID found';
+    results.push({ json: data });
+    continue;
+  }
+  
+  console.log(`🔄 Processing item: ${data.title || data.id || 'Unknown'} (DocID: ${docId})`);
+  
+  // Define image fields to process
+  const imageFields = ['Displayurl', 'Image0', 'Image1', 'Image2', 'Image3', 'Image4', 'Image5', 'Image6'];
+  
+  // Add metadata fields to the original item (don't create new items)
+  data.docId = docId; // Add docId for easy access
+  data.imageFieldsToProcess = []; // Track which fields need conversion
+  
+  // Check which images need conversion and prepare the data
   for (const field of imageFields) {
-    const imageUrl = item.json[field];
+    const imageUrl = data[field];
     
-    if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
-      // Skip if already WebP
-      if (imageUrl.includes('.webp')) {
-        console.log(`⏭️  ${field} already WebP, skipping`);
-        continue;
-      }
+    if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '' && !imageUrl.includes('.webp')) {
+      // Mark this field for conversion
+      data.imageFieldsToProcess.push({
+        field: field,
+        imageUrl: imageUrl,
+        needsConversion: true
+      });
       
-      console.log(`🔄 Converting ${field}: ${imageUrl.substring(0, 50)}...`);
-      
-      try {
-        // Call Firebase function to convert to WebP
-        const response = await fetch('https://us-central1-nocta-d1113.cloudfunctions.net/convertToWebP', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            data: {
-              imageUrl: imageUrl
-            }
-          })
-        });
-        
-        const result = await response.json();
-        
-        if (result.result && result.result.success) {
-          // Replace the original field with WebP URL
-          updatedItem[field] = result.result.webpUrl;
-          
-          // Also keep the original URL in a backup field
-          updatedItem[`${field}_original`] = imageUrl;
-          
-          console.log(`✅ Converted ${field} to WebP: ${result.result.compressionRatio} smaller`);
-          console.log(`   Original: ${(result.result.originalSize / 1024).toFixed(1)} KB`);
-          console.log(`   WebP: ${(result.result.webpSize / 1024).toFixed(1)} KB`);
-          console.log(`   New URL: ${result.result.webpUrl}`);
-        } else {
-          console.log(`❌ Failed to convert ${field}: ${result.result?.error || 'Unknown error'}`);
-        }
-        
-      } catch (error) {
-        console.log(`❌ Error converting ${field}:`, error.message);
-      }
+      console.log(`✅ Marked ${field} for conversion in document ${docId}`);
+    } else if (imageUrl && imageUrl.includes('.webp')) {
+      console.log(`⏭️  ${field} already WebP, skipping`);
     } else {
       console.log(`⏭️  ${field} is empty or null, skipping`);
     }
   }
   
-  results.push(updatedItem);
+  // Add the processed item (same item, just with added metadata)
+  results.push({ json: data });
 }
 
-console.log(`🎉 Processed ${results.length} items`);
+console.log(`🎯 Processed ${results.length} items (same as input)`);
+console.log(`📊 Total images marked for conversion: ${results.reduce((sum, item) => sum + item.json.imageFieldsToProcess.length, 0)}`);
 return results; 
