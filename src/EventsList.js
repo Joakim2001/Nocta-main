@@ -236,23 +236,7 @@ function EventCard({ event, imgError, setImgError, navigate }) {
           // Priority 1: Check for video (prioritize optimized)
     const videoUrl = event.optimizedVideourl || event.webMVideourl || event.videourl || event.videoUrl || event.VideoURL;
     
-    // ENHANCED DEBUGGING FOR VIDEO FIELDS
-    console.log('🎬 VIDEO DEBUG - EventCard (EventsList):', {
-      eventId: event.id,
-      title: event.title || event.caption?.substring(0, 30),
-      // Check all possible video fields
-      optimizedVideourl: event.optimizedVideourl,
-      webMVideourl: event.webMVideourl,
-      videourl: event.videourl,
-      videoUrl: event.videoUrl,
-      VideoURL: event.VideoURL,
-      // Final selected video URL
-      finalVideoUrl: videoUrl,
-      // Check source
-      isFromStorage: (event.optimizedVideourl || event.webMVideourl)?.includes('storage.googleapis.com'),
-      isFromDatabase: (event.videourl || event.videoUrl || event.VideoURL)?.includes('instagram.com') || 
-                     (event.videourl || event.videoUrl || event.VideoURL)?.includes('cdninstagram.com')
-    });
+    // Video field processing (debug logging removed for production)
     
     if (videoUrl && videoUrl !== null && videoUrl.trim() !== '') {
       logger.debug('EventCard - Video found:', videoUrl);

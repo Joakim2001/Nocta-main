@@ -410,25 +410,7 @@ export default function EventDetailPage() {
           // Check if video has been optimized (Firebase Storage, WebM, or compressed)
           const isVideoOptimized = eventData.optimizedVideourl || eventData.webMVideourl || eventData.videourl_compressed || eventData.videoUrl_compressed || eventData.VideoURL_compressed;
           
-          // ENHANCED DEBUGGING FOR VIDEO FIELDS
-          console.log('🎬 VIDEO DEBUG - EventDetailPage:', {
-            eventId: eventData.id,
-            title: eventData.title || eventData.caption?.substring(0, 30),
-            // Check all possible video fields
-            optimizedVideourl: eventData.optimizedVideourl,
-            webMVideourl: eventData.webMVideourl,
-            videourl: eventData.videourl,
-            videoUrl: eventData.videoUrl,
-            VideoURL: eventData.VideoURL,
-            // Final selected video URL
-            finalVideoUrl: videoUrl,
-            // Check if optimized
-            isVideoOptimized: isVideoOptimized,
-            // Check source
-            isFromStorage: (eventData.optimizedVideourl || eventData.webMVideourl)?.includes('storage.googleapis.com'),
-            isFromDatabase: (eventData.videourl || eventData.videoUrl || eventData.VideoURL)?.includes('instagram.com') || 
-                           (eventData.videourl || eventData.videoUrl || eventData.VideoURL)?.includes('cdninstagram.com')
-          });
+          // Video field processing (debug logging removed for production)
           
           logger.debug('EventDetail - Checking video fields:', {
             videourl: eventData.videourl,
