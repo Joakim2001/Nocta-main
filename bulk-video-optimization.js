@@ -2,18 +2,21 @@ const admin = require('firebase-admin');
 const axios = require('axios');
 const path = require('path');
 
-// Initialize Firebase Admin SDK (using default credentials from Firebase CLI)
+// Initialize Firebase Admin SDK using service account key
 try {
   // Clear any existing apps to avoid conflicts
   if (admin.apps.length > 0) {
     admin.apps.forEach(app => app.delete());
   }
   
+  const serviceAccount = require('./serviceAccountKey.json');
+  
   admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
     projectId: 'nocta-d1113'
   });
   
-  console.log('✅ Firebase Admin SDK initialized successfully using CLI credentials');
+  console.log('✅ Firebase Admin SDK initialized successfully using service account key');
 } catch (error) {
   console.error('❌ Failed to initialize Firebase Admin SDK:', error.message);
   process.exit(1);
