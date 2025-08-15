@@ -1072,103 +1072,59 @@ function App() {
     return () => clearTimeout(timeoutId);
   }, [location.pathname, navigate]);
 
+  // Handle auth state changes
   useEffect(() => {
-    console.log('🔍 App.js: useEffect triggered, location:', location.pathname);
+    console.log('🔍 App.js: Setting up auth state listener...');
+    console.log('🔍 App.js: Current userType:', userType);
+    console.log('🔍 App.js: Current user:', user);
+    
     const unsub = onAuthStateChanged(auth, async (user) => {
-      console.log('🔍 App.js: Auth state changed:', user ? `User: ${user.uid}` : 'No user');
-      console.log('🔍 App.js: Current location:', location.pathname);
-      console.log('🔍 App.js: localStorage isNewSignup:', localStorage.getItem('isNewSignup'));
-      
-      setCheckingProfile(true);
+      console.log('🔍 App.js: Auth state changed:', user ? 'User logged in' : 'No user');
       if (user) {
-          let type = userType || localStorage.getItem('userType');
-          let collectionName = type === 'company' ? 'Club_Bar_Festival_profiles' : 'profiles';
-          const docRef = doc(db, collectionName, user.uid);
+        console.log('🔍 App.js: User details - UID:', user.uid, 'Email:', user.email);
+        console.log('🔍 App.js: User email verified:', user.emailVerified);
+        console.log('🔍 App.js: User provider data:', user.providerData);
+      }
+      
+      setUser(user);
+      
+      if (user) {
+        console.log('🔍 App.js: User authenticated, checking profile...');
         try {
-          const docSnap = await getDoc(docRef);
-          console.log('🔍 App.js: Firestore doc exists:', docSnap.exists());
-          if (docSnap.exists()) {
-            const userData = docSnap.data();
-            
-            // For companies, check verification status
-            if (type === 'company') {
-              if (userData.verificationStatus === 'rejected') {
-                await auth.signOut();
-                setProfileLoaded(false);
-                setProfileComplete(false);
-                setCheckingProfile(false);
-                return;
-              }
-              
-              if (userData.verificationStatus === 'pending') {
-                await auth.signOut();
-                setProfileLoaded(false);
-                setProfileComplete(false);
-                setCheckingProfile(false);
-                return;
-              }
-            }
-            
-            // For private users, check if profile is complete (has all required fields)
-            if (type !== 'company') {
-              const requiredFields = ['firstName', 'lastName', 'gender', 'dob', 'country', 'phone'];
-              const hasAllRequiredFields = requiredFields.every(field => userData[field]);
-              
-              console.log('🔍 App.js: Profile completeness check:', {
-                hasAllRequiredFields,
-                missingFields: requiredFields.filter(field => !userData[field]),
-                userData: Object.keys(userData)
-              });
-              
-              if (!hasAllRequiredFields) {
-                console.log('🔍 App.js: Profile incomplete, redirecting to profile setup');
-                setProfileLoaded(true);
-                setProfileComplete(false);
-                setCheckingProfile(false);
-                
-                // Redirect to profile setup if not already there
-                if (location.pathname !== '/profile-setup' && location.pathname !== '/favorites-setup') {
-                  window.location.href = '/profile-setup';
-                }
-                return;
-              }
-            }
-            
+          // Check if user exists in profiles collection (for private users)
+          const profilesRef = doc(db, 'profiles', user.uid);
+          const profilesSnap = await getDoc(profilesRef);
+          
+          if (profilesSnap.exists()) {
+            console.log('🔍 App.js: User found in profiles collection (private user)');
             setProfileLoaded(true);
-            setProfileComplete(true);
+            const profileData = profilesSnap.data();
+            setProfileComplete(profileData.favorites && profileData.favorites.length > 0);
           } else {
-            // User doesn't exist in Firestore - but don't sign them out if they're on profile setup
-            const isNewSignupFlag = localStorage.getItem('isNewSignup') === 'true';
-            console.log('🔍 App.js: User not in Firestore, current path:', location.pathname, 'isNewSignup:', isNewSignupFlag);
+            // Check if user exists in Club_Bar_Festival_profiles (for companies)
+            const companyRef = doc(db, 'Club_Bar_Festival_profiles', user.uid);
+            const companySnap = await getDoc(companyRef);
             
-            // Always allow users on profile-setup and favorites-setup pages, regardless of flag
-            if (location.pathname === '/profile-setup') {
-              console.log('🔍 App.js: Allowing user to stay on profile setup (path check)');
+            if (companySnap.exists()) {
+              console.log('🔍 App.js: User found in Club_Bar_Festival_profiles (company)');
               setProfileLoaded(true);
-              setProfileComplete(false);
-            } else if (location.pathname === '/favorites-setup') {
-              console.log('🔍 App.js: Allowing user to stay on favorites setup (path check)');
-              setProfileLoaded(true);
-              setProfileComplete(false);
-            } else if (isNewSignupFlag) {
-              console.log('🔍 App.js: Allowing user to stay (new signup flag)');
-            setProfileLoaded(true);
-            setProfileComplete(false);
+              const companyData = companySnap.data();
+              setProfileComplete(companyData.verificationStatus === 'approved');
             } else {
-              // Sign them out for other pages
-              console.log('🔍 App.js: Signing out user - not on profile/favorites setup and no new signup flag');
-              await auth.signOut();
+              console.log('🔍 App.js: User not found in any collection');
               setProfileLoaded(false);
               setProfileComplete(false);
             }
           }
         } catch (err) {
+          console.error('🔍 App.js: Error checking profile:', err);
           setProfileError('Failed to load profile.');
           await auth.signOut();
           setProfileLoaded(false);
           setProfileComplete(false);
         }
       } else {
+        console.log('🔍 App.js: No user, clearing profile state');
         // Check if user was recently in signup flow and allow them to continue
         const isNewSignupFlag = localStorage.getItem('isNewSignup') === 'true';
         const wasInSignupFlow = localStorage.getItem('wasInSignupFlow') === 'true';
@@ -1178,14 +1134,17 @@ function App() {
           console.log('🔍 App.js: User signed out but allowing to continue in signup flow');
           setProfileLoaded(true);
           setProfileComplete(false);
-      } else {
-        setProfileLoaded(false);
-        setProfileComplete(false);
+        } else {
+          setProfileLoaded(false);
+          setProfileComplete(false);
         }
       }
       setCheckingProfile(false);
     });
-    return () => unsub();
+    return () => {
+      console.log('🔍 App.js: Cleaning up auth state listener');
+      unsub();
+    };
   }, [userType, setProfileLoaded, setProfileComplete, location.pathname]);
 
   const hideNavRoutes = ['/', '/login', '/signup', '/profile-setup', '/favorites-setup', '/select-type', '/private-signup-choice', '/company-setup', '/company-setup-final', '/company-verification-setup', '/company-verification', '/verification-pending', '/company-login', '/company-signup'];
@@ -1198,57 +1157,77 @@ function App() {
 
   return (
     <ThemeProvider>
-        <UserTypeDetector />
+        {(() => {
+          console.log('🔍 App.js: Rendering UserTypeDetector');
+          return <UserTypeDetector />;
+        })()}
         {profileError && <div className="fixed top-0 left-0 right-0 bg-red-600 text-white text-center py-2 z-50">{profileError}</div>}
         
+        <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+          <div style={{ flex: 1 }}>
             <Routes>
               <Route path="/" element={<FrontPage />} />
               <Route path="/select-type" element={<UserTypeSelect />} />
-    <Route path="/private-signup-choice" element={<PrivateUserSignupChoice />} />
+              <Route path="/private-signup-choice" element={<PrivateUserSignupChoice />} />
               <Route path="/login" element={<AuthPage />} />
               <Route path="/signup" element={<AuthPage />} />
               <Route path="/company-signup" element={<AuthPageCompany />} />
               <Route path="/company-login" element={<AuthPageCompany />} />
-          <Route path="/company-create-event" element={<CompanyCreateSelect />} />
-          <Route path="/company-create-event/new" element={<CreateCompanyEvent />} />
-        <Route path="/ticket-configuration" element={<TicketConfiguration />} />
+              <Route path="/company-create-event" element={<CompanyCreateSelect />} />
+              <Route path="/company-create-event/new" element={<CreateCompanyEvent />} />
+              <Route path="/ticket-configuration" element={<TicketConfiguration />} />
               <Route path="/profile-setup" element={<ProfileSetup />} />
               <Route path="/favorites-setup" element={<FavoritesSetupNew />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/company-setup" element={<CompanyVerificationSetup />} />
-        <Route path="/company-setup-final" element={<CompanyVerificationSetup />} />
-        <Route path="/company-verification-setup" element={<CompanyVerificationSetup />} />
-                      <Route path="/company-verification" element={<CompanyVerification />} />
-        <Route path="/verification-pending" element={<CompanyVerification />} />
-        <Route path="/company-verification-code" element={<CompanyVerificationCode />} />
-        <Route path="/admin-approve-company" element={<AdminApproveCompany />} />
-        <Route path="/admin-reject-company" element={<AdminApproveCompany />} />
-          <Route path="/home" element={
-            (() => {
-              console.log('🔍 App.js: /home route check - profileLoaded:', profileLoaded, 'profileComplete:', profileComplete);
-              // Allow guest browsing - if no user, show the page without authentication
-              if (!user) {
-                return <EventsListWithNav />;
-              }
-              return profileLoaded && profileComplete ? <EventsListWithNav /> : <Navigate to={userType === 'company' ? "/company-verification-setup" : "/profile-setup"} replace />;
-            })()
-          } />
+              <Route path="/company-setup-final" element={<CompanyVerificationSetup />} />
+              <Route path="/company-verification-setup" element={<CompanyVerificationSetup />} />
+              <Route path="/company-verification" element={<CompanyVerification />} />
+              <Route path="/verification-pending" element={<CompanyVerification />} />
+              <Route path="/company-verification-code" element={<CompanyVerificationCode />} />
+              <Route path="/admin-approve-company" element={<AdminApproveCompany />} />
+              <Route path="/admin-reject-company" element={<AdminApproveCompany />} />
+              <Route path="/home" element={
+                (() => {
+                  console.log('🔍 App.js: /home route check - profileLoaded:', profileLoaded, 'profileComplete:', profileComplete);
+                  // Allow guest browsing - if no user, show the page without authentication
+                  if (!user) {
+                    return <EventsListWithNav />;
+                  }
+                  return profileLoaded && profileComplete ? <EventsListWithNav /> : <Navigate to={userType === 'company' ? "/company-verification-setup" : "/profile-setup"} replace />;
+                })()
+              } />
               <Route path="/bars" element={<BarsList />} />
               <Route path="/event/:id" element={<EventDetailPage />} />
               <Route path="/company-events" element={<EventsListCompany />} />
-  
               <Route path="/company-deleted-event/:id" element={<EventDetailPageDeletedCompany />} />
               <Route path="/chats" element={
-                userType === 'company' ? 
-                  <ChatPageCompany ref={chatPageRef} unreadCount={unreadCount} setUnreadCount={setUnreadCount} /> : 
-                  <ChatPagePrivate ref={chatPageRef} unreadCount={unreadCount} setUnreadCount={setUnreadCount} />
+                (() => {
+                  console.log('🔍 App.js: /chats route check - userType:', userType, 'user:', !!user);
+                  
+                  if (!userType) {
+                    console.log('🔍 App.js: userType not set yet, showing loading...');
+                    return <div className="flex justify-center items-center min-h-screen text-white">Loading user type...</div>;
+                  }
+                  
+                  if (userType === 'company') {
+                    console.log('🔍 App.js: Rendering ChatPageCompany for company user');
+                    return <ChatPageCompany ref={chatPageRef} unreadCount={unreadCount} setUnreadCount={setUnreadCount} />;
+                  } else {
+                    console.log('🔍 App.js: Rendering ChatPagePrivate for private user');
+                    return <ChatPagePrivate ref={chatPageRef} unreadCount={unreadCount} setUnreadCount={setUnreadCount} />;
+                  }
+                })()
               } />
-                        <Route path="/my-tickets" element={<MyTickets />} />
+              <Route path="/my-tickets" element={<MyTickets />} />
               <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="/payment-cancel" element={<PaymentCancel />} />
               <Route path="/admin-dashboard" element={<AdminDashboard />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+          </div>
+        </div>
+        
         {(shouldShowBottomNav || shouldShowCompanyNav) && (() => {
           console.log('🔍 App.js: Navigation check - userType:', userType, 'shouldShowBottomNav:', shouldShowBottomNav, 'shouldShowCompanyNav:', shouldShowCompanyNav);
           if (shouldShowCompanyNav) {

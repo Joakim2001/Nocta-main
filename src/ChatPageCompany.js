@@ -94,7 +94,7 @@ const ChatPageCompany = forwardRef(({ unreadCount, setUnreadCount }, ref) => {
     if (!user) return;
     async function fetchUsers() {
       try {
-        const snap = await getDocs(collection(db, 'users'));
+        const snap = await getDocs(collection(db, 'profiles'));
         setClubUsers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       } catch (e) {
         console.error('Error fetching users for club chat:', e);

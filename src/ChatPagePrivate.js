@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import { db } from './firebase';
-import { collection, query, orderBy, addDoc, serverTimestamp, onSnapshot, getDocs, updateDoc, doc } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { collection, query, orderBy, addDoc, serverTimestamp, onSnapshot, getDocs, updateDoc, doc, limit } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { CLUB_FESTIVAL_NAMES } from './club_festival_names';
+import BottomNav from './BottomNav';
+import { useUserType } from './UserTypeContext';
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -38,6 +40,39 @@ const ChatPagePrivate = forwardRef(({ unreadCount, setUnreadCount }, ref) => {
   const [longPressTimer, setLongPressTimer] = useState(null);
   const auth = getAuth();
   const user = auth.currentUser;
+  const { userType } = useUserType();
+
+  // Debug authentication state
+  useEffect(() => {
+    console.log('🔍 ChatPagePrivate: Component mounted');
+    console.log('🔍 ChatPagePrivate: Auth state:', auth);
+    console.log('🔍 ChatPagePrivate: Current user:', user);
+    console.log('🔍 ChatPagePrivate: User UID:', user?.uid);
+    console.log('🔍 ChatPagePrivate: User email:', user?.email);
+    console.log('🔍 ChatPagePrivate: User Type:', userType);
+  }, [auth, user, userType]);
+
+  // Monitor auth state changes
+  useEffect(() => {
+    console.log('🔍 ChatPagePrivate: Setting up auth state listener...');
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('🔍 ChatPagePrivate: Auth state changed:', user ? 'User logged in' : 'No user');
+      if (user) {
+        console.log('🔍 ChatPagePrivate: User details - UID:', user.uid, 'Email:', user.email);
+      }
+    });
+    
+    return () => {
+      console.log('🔍 ChatPagePrivate: Cleaning up auth state listener');
+      unsubscribe();
+    };
+  }, [auth]);
+
+  // Debug clubs state changes
+  useEffect(() => {
+    console.log('🔍 ChatPagePrivate: Clubs state changed:', clubs.length, 'clubs');
+    console.log('🔍 ChatPagePrivate: Clubs data:', clubs);
+  }, [clubs]);
   
 
 
@@ -108,17 +143,47 @@ const ChatPagePrivate = forwardRef(({ unreadCount, setUnreadCount }, ref) => {
 
   // Fetch all clubs for new chat
   useEffect(() => {
-    console.log('Fetching all Club_Bar_Festival_profiles for new chat dropdown...');
-    async function fetchClubs() {
-      try {
-        const snap = await getDocs(collection(db, 'Club_Bar_Festival_profiles'));
-        setClubs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      } catch (e) {
-        console.error('Error fetching clubs for new chat:', e);
-      }
+    console.log('🔍 ChatPagePrivate: fetchClubs useEffect triggered');
+    console.log('🔍 ChatPagePrivate: Current user in fetchClubs:', user);
+    console.log('🔍 ChatPagePrivate: User authenticated:', !!user);
+    console.log('🔍 ChatPagePrivate: User UID available:', !!user?.uid);
+    console.log('🔍 ChatPagePrivate: User email verified:', user?.emailVerified);
+    console.log('🔍 ChatPagePrivate: User provider data:', user?.providerData);
+    
+    if (!user || !user.uid) {
+      console.log('🔍 ChatPagePrivate: No user or no UID, skipping fetchClubs');
+      return;
     }
-    fetchClubs();
-  }, []);
+    
+    // Wait a bit to ensure user is fully authenticated
+    const timer = setTimeout(() => {
+      console.log('🔍 ChatPagePrivate: Timer fired, proceeding with fetchClubs');
+      fetchClubs();
+    }, 1000);
+    
+    return () => {
+      console.log('🔍 ChatPagePrivate: Cleaning up timer');
+      clearTimeout(timer);
+    };
+  }, [user]);
+
+  async function fetchClubs() {
+    try {
+      console.log('🔍 ChatPagePrivate: Starting Firestore query...');
+      console.log('🔍 ChatPagePrivate: Querying collection: Club_Bar_Festival_profiles');
+      const snap = await getDocs(collection(db, 'Club_Bar_Festival_profiles'));
+      console.log('🔍 ChatPagePrivate: Firestore query completed successfully');
+      console.log('Club_Bar_Festival_profiles snapshot:', snap.docs.length, 'documents found');
+      const clubsData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      console.log('Clubs data:', clubsData);
+      setClubs(clubsData);
+      console.log('🔍 ChatPagePrivate: Clubs state updated with', clubsData.length, 'clubs');
+    } catch (e) {
+      console.error('🔍 ChatPagePrivate: Error fetching clubs for new chat:', e);
+      console.error('🔍 ChatPagePrivate: Error details:', e.code, e.message);
+      console.error('🔍 ChatPagePrivate: Error stack:', e.stack);
+    }
+  }
 
   // Listen for messages in selected thread
   useEffect(() => {
@@ -134,6 +199,26 @@ const ChatPagePrivate = forwardRef(({ unreadCount, setUnreadCount }, ref) => {
     });
     return () => unsub();
   }, [selectedThread, user?.uid]);
+
+  // Test Firestore connection
+  useEffect(() => {
+    if (!user || !user.uid) return;
+    
+    console.log('🔍 ChatPagePrivate: Testing Firestore connection...');
+    async function testConnection() {
+      try {
+        // Try to get a single document to test connection
+        const testQuery = query(collection(db, 'Club_Bar_Festival_profiles'), limit(1));
+        console.log('🔍 ChatPagePrivate: Testing with limit(1) query...');
+        const testSnap = await getDocs(testQuery);
+        console.log('🔍 ChatPagePrivate: Test query successful, got', testSnap.docs.length, 'docs');
+      } catch (e) {
+        console.error('🔍 ChatPagePrivate: Test query failed:', e);
+        console.error('🔍 ChatPagePrivate: Test error details:', e.code, e.message);
+      }
+    }
+    testConnection();
+  }, [user]);
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -470,9 +555,9 @@ const ChatPagePrivate = forwardRef(({ unreadCount, setUnreadCount }, ref) => {
           }}>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                          <div>
-              <span style={{ fontWeight: 700, fontSize: 20, color: '#fff', textShadow: '0 2px 8px #3E29F099' }}>New Message</span>
-            </div>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: 20, color: '#fff', textShadow: '0 2px 8px #3E29F099' }}>New Message</span>
+              </div>
               <button 
                 onClick={() => setShowNewChat(false)}
                 style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}
@@ -509,18 +594,28 @@ const ChatPagePrivate = forwardRef(({ unreadCount, setUnreadCount }, ref) => {
             <div style={{ maxHeight: 400, overflowY: 'auto', marginBottom: 12 }}>
               {/* Show clubs and bars in organized sections */}
               <>
-                                    {/* Show sections based on filter */}
-                    {(filterType === 'all' || filterType === 'club') && (
-                      <>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#a445ff', marginBottom: 8, marginTop: filterType === 'all' ? 0 : 8 }}>
-                          Clubs
-                        </div>
-                    {clubs
-                      .filter(club => {
+                {/* Show sections based on filter */}
+                {(filterType === 'all' || filterType === 'club') && (
+                  <>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#a445ff', marginBottom: 8, marginTop: filterType === 'all' ? 0 : 8 }}>
+                      Clubs
+                    </div>
+                    {(() => {
+                      const clubVenues = clubs.filter(club => {
                         const venueName = club.name || club.companyName || club.fullname || club.email || club.id;
-                        return isClubVenue(venueName);
-                      })
-                      .map(club => (
+                        const isClub = isClubVenue(venueName);
+                        return isClub;
+                      });
+                      
+                      if (clubVenues.length === 0) {
+                        return (
+                          <div style={{ padding: '16px 20px', color: '#94a3b8', fontSize: 14, textAlign: 'center' }}>
+                            No clubs found
+                          </div>
+                        );
+                      }
+                      
+                      return clubVenues.map(club => (
                         <div key={club.id} style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', marginBottom: 10, color: '#fff', fontWeight: 500, transition: 'background 0.2s' }}>
                           <input
                             type="checkbox"
@@ -550,22 +645,33 @@ const ChatPagePrivate = forwardRef(({ unreadCount, setUnreadCount }, ref) => {
                             </div>
                           </div>
                         </div>
-                      ))}
+                      ));
+                    })()}
                   </>
                 )}
                 
                 {/* Bars section */}
                 {(filterType === 'all' || filterType === 'bar') && (
                   <>
-                                            <div style={{ fontSize: 14, fontWeight: 600, color: '#a445ff', marginBottom: 8, marginTop: filterType === 'all' ? 16 : 8 }}>
-                          Bars
-                        </div>
-                    {clubs
-                      .filter(club => {
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#a445ff', marginBottom: 8, marginTop: filterType === 'all' ? 16 : 8 }}>
+                      Bars
+                    </div>
+                    {(() => {
+                      const barVenues = clubs.filter(club => {
                         const venueName = club.name || club.companyName || club.fullname || club.email || club.id;
-                        return !isClubVenue(venueName);
-                      })
-                      .map(club => (
+                        const isClub = isClubVenue(venueName);
+                        return !isClub;
+                      });
+                      
+                      if (barVenues.length === 0) {
+                        return (
+                          <div style={{ padding: '16px 20px', color: '#94a3b8', fontSize: 14, textAlign: 'center' }}>
+                            No bars found
+                          </div>
+                        );
+                      }
+                      
+                      return barVenues.map(club => (
                         <div key={club.id} style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', marginBottom: 10, color: '#fff', fontWeight: 500, transition: 'background 0.2s' }}>
                           <input
                             type="checkbox"
@@ -595,7 +701,8 @@ const ChatPagePrivate = forwardRef(({ unreadCount, setUnreadCount }, ref) => {
                             </div>
                           </div>
                         </div>
-                      ))}
+                      ));
+                    })()}
                   </>
                 )}
               </>

@@ -22,9 +22,22 @@ if (process.env.NODE_ENV === 'production') {
   console.log('🔍 Firebase: Development mode');
 }
 
+console.log('🔍 Firebase: Initializing app...');
 const app = initializeApp(firebaseConfig);
+console.log('🔍 Firebase: App initialized successfully');
+
+console.log('🔍 Firebase: Getting Firestore instance...');
 const db = getFirestore(app);
+console.log('🔍 Firebase: Firestore instance created');
+
+console.log('🔍 Firebase: Getting Auth instance...');
 const auth = getAuth(app);
+console.log('🔍 Firebase: Auth instance created');
+
+console.log('🔍 Firebase: Getting Storage instance...');
 const storage = getStorage(app);
+console.log('🔍 Firebase: Storage instance created');
+
+console.log('🔍 Firebase: All services initialized successfully');
 
 export { db, auth, storage };

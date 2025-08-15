@@ -46,9 +46,13 @@ const ChatPage = forwardRef(({ unreadCount, setUnreadCount }, ref) => {
   useEffect(() => {
     if (!user) return;
     console.log('Checking if user is a club. Fetching Club_Bar_Festival_profiles...');
+    console.log('Current user UID:', user.uid);
     getDocs(collection(db, 'Club_Bar_Festival_profiles')).then(snap => {
       const clubIds = snap.docs.map(doc => doc.id);
-      setIsClub(clubIds.includes(user.uid));
+      console.log('All club IDs found:', clubIds);
+      const isUserClub = clubIds.includes(user.uid);
+      console.log('Is current user a club?', isUserClub);
+      setIsClub(isUserClub);
     }).catch(e => console.error('Error fetching Club_Bar_Festival_profiles:', e));
   }, [user]);
 
@@ -169,16 +173,21 @@ const ChatPage = forwardRef(({ unreadCount, setUnreadCount }, ref) => {
   useEffect(() => {
     if (isClub) return;
     console.log('Fetching all Club_Bar_Festival_profiles for new chat dropdown...');
+    console.log('Current user:', user?.email, 'UID:', user?.uid);
+    console.log('isClub value:', isClub);
     async function fetchClubs() {
       try {
         const snap = await getDocs(collection(db, 'Club_Bar_Festival_profiles'));
-        setClubs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        console.log('Club_Bar_Festival_profiles snapshot:', snap.docs.length, 'documents found');
+        const clubsData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        console.log('Clubs data:', clubsData);
+        setClubs(clubsData);
       } catch (e) {
         console.error('Error fetching clubs for new chat:', e);
       }
     }
     fetchClubs();
-  }, [isClub]);
+  }, [isClub, user]);
 
   // Fetch all users for new chat (clubs)
   useEffect(() => {

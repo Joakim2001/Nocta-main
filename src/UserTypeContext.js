@@ -3,8 +3,14 @@ import React, { createContext, useState, useContext } from 'react';
 export const UserTypeContext = createContext();
 
 export function UserTypeProvider({ children }) {
-  const [userType, setUserTypeState] = useState(() => localStorage.getItem('userType') || null);
+  const [userType, setUserTypeState] = useState(() => {
+    const stored = localStorage.getItem('userType');
+    console.log('🔍 UserTypeContext: Initial userType from localStorage:', stored);
+    return stored || null;
+  });
+  
   const setUserType = (type) => {
+    console.log('🔍 UserTypeContext: Setting userType to:', type);
     setUserTypeState(type);
     if (type) {
       localStorage.setItem('userType', type);
@@ -12,6 +18,9 @@ export function UserTypeProvider({ children }) {
       localStorage.removeItem('userType');
     }
   };
+  
+  console.log('🔍 UserTypeContext: Current userType:', userType);
+  
   return (
     <UserTypeContext.Provider value={{ userType, setUserType }}>
       {children}
