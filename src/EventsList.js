@@ -259,8 +259,8 @@ function EventCard({ event, imgError, setImgError, navigate }) {
       else {
         // Check for WebP images in order of preference
         const webPFields = [
-          event.webPImage1, event.webPImage0, event.webPImage2, event.webPImage3, 
-          event.webPImage4, event.webPImage5, event.webPImage6, event.webPDisplayurl
+                  event.WebPImage1, event.WebPImage0, event.WebPImage2, event.WebPImage3,
+        event.WebPImage4, event.WebPImage5, event.WebPImage6, event.WebPDisplayurl
         ];
         
         for (const webPField of webPFields) {

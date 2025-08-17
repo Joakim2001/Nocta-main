@@ -9,6 +9,8 @@ function PrivateUserSignupChoice() {
   };
 
   const handleSignUpLater = () => {
+    // Set a flag to indicate user chose to sign up later
+    localStorage.setItem('signUpLater', 'true');
     navigate('/home');
   };
 

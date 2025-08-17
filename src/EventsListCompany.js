@@ -159,8 +159,8 @@ function EventCard({ event, navigate, showPreviousEvents }) {
       // Try all possible image fields in order of preference (prioritize WebP)
       const imageFields = [
         // WebP images first (highest priority)
-        event.webPImage1, event.webPImage0, event.webPImage2, event.webPImage3, event.webPImage4, event.webPImage5, event.webPImage6,
-        event.webPDisplayurl,
+        event.WebPImage1, event.WebPImage0, event.WebPImage2, event.WebPImage3, event.WebPImage4, event.WebPImage5, event.WebPImage6,
+        event.WebPDisplayurl,
         // Original images as fallback
         event.Image1, event.Image0, event.Image2, event.Image3, event.Image4, event.Image5, event.Image6,
         event.Displayurl, event.displayurl, event.imageUrl, event.url, event.inputurl

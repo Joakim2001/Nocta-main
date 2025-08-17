@@ -1099,16 +1099,20 @@ function App() {
             console.log('🔍 App.js: User found in profiles collection (private user)');
             setProfileLoaded(true);
             const profileData = profilesSnap.data();
-            setProfileComplete(profileData.favorites && profileData.favorites.length > 0);
+            // Check if user has favorites OR has completed the favorites setup flow
+            const hasFavorites = profileData.favorites && profileData.favorites.length > 0;
+            const hasCompletedFavoritesSetup = localStorage.getItem('profileSetupComplete') === 'true';
+            setProfileComplete(hasFavorites || hasCompletedFavoritesSetup);
           } else {
             // Check if user exists in Club_Bar_Festival_profiles (for companies)
             const companyRef = doc(db, 'Club_Bar_Festival_profiles', user.uid);
             const companySnap = await getDoc(companyRef);
             
             if (companySnap.exists()) {
-              console.log('🔍 App.js: User found in Club_Bar_Festival_profiles (company)');
+              console.log('🔍 App.js: User found in Club_Bar_Far_Festival_profiles (company)');
               setProfileLoaded(true);
               const companyData = companySnap.data();
+              // Check if company is verified
               setProfileComplete(companyData.verificationStatus === 'approved');
             } else {
               console.log('🔍 App.js: User not found in any collection');
@@ -1194,6 +1198,13 @@ function App() {
                   if (!user) {
                     return <EventsListWithNav />;
                   }
+                  
+                  // Check if user chose to sign up later
+                  const signUpLater = localStorage.getItem('signUpLater') === 'true';
+                  if (signUpLater) {
+                    return <EventsListWithNav />;
+                  }
+                  
                   return profileLoaded && profileComplete ? <EventsListWithNav /> : <Navigate to={userType === 'company' ? "/company-verification-setup" : "/profile-setup"} replace />;
                 })()
               } />

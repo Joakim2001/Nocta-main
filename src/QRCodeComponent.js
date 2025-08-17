@@ -12,8 +12,8 @@ export default function QRCodeComponent({ ticketData, size = 120 }) {
         eventName: ticketData.eventName,
         price: ticketData.price,
         userId: ticketData.userId,
-        purchaseDate: ticketData.purchaseDate?.seconds || Date.now() / 1000,
-        type: ticketData.price >= 200 ? 'VIP' : 'General'
+        purchaseDate: ticketData.purchaseDate?.seconds || ticketData.downloadDate?.seconds || Date.now() / 1000,
+        type: ticketData.price === 0 ? 'Free' : (ticketData.price >= 200 ? 'VIP' : 'General')
       });
 
       QRCode.toCanvas(canvasRef.current, qrData, {

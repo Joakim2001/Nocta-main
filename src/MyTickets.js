@@ -178,7 +178,7 @@ export default function MyTickets() {
           tickets: [],
           totalQuantity: 0,
           totalPrice: 0,
-          purchaseDate: ticket.purchaseDate,
+          purchaseDate: ticket.purchaseDate || ticket.downloadDate,
           eventDate: ticket.eventDate
         };
       }
@@ -241,8 +241,8 @@ export default function MyTickets() {
           eventName: ticket.eventName,
           ticketId: ticket.id,
           price: ticket.price,
-          purchaseDate: formatDate(ticket.purchaseDate),
-          type: ticket.price >= 200 ? 'VIP Access' : 'General Admission',
+          purchaseDate: formatDate(ticket.purchaseDate || ticket.downloadDate),
+          type: ticket.price === 0 ? 'Free Ticket' : (ticket.price >= 200 ? 'VIP Access' : 'General Admission'),
           qrCode: `ticket-${ticket.id}` // Reference to QR code
         };
 
@@ -315,14 +315,14 @@ export default function MyTickets() {
             fontWeight: 'bold',
             color: '#10b981'
           }}>
-            {ticketGroup.totalPrice} DKK
+            {ticketGroup.totalPrice === 0 ? 'Free' : `${ticketGroup.totalPrice} DKK`}
           </span>
         </div>
 
-        {/* Purchase Date */}
+        {/* Purchase/Download Date */}
         <div style={{ marginBottom: '16px' }}>
           <span style={{ color: '#9ca3af', fontSize: '14px' }}>
-            Purchased: {formatDate(firstTicket.purchaseDate)} at {formatTime(firstTicket.purchaseDate)}
+            {firstTicket.price === 0 ? 'Downloaded' : 'Purchased'}: {formatDate(firstTicket.purchaseDate || firstTicket.downloadDate)} at {formatTime(firstTicket.purchaseDate || firstTicket.downloadDate)}
           </span>
         </div>
 

@@ -55,6 +55,7 @@ function FavoritesSetupNew() {
       // Clear signup flow flags since user has completed the entire flow
       localStorage.removeItem('isNewSignup');
       localStorage.removeItem('wasInSignupFlow');
+      localStorage.setItem('profileSetupComplete', 'true'); // Mark profile setup as complete
       setLoading(false);
       console.log('🔍 FavoritesSetupNew: Navigating to /home after saving favorites');
       navigate('/home'); // Navigate to main events page
@@ -68,6 +69,7 @@ function FavoritesSetupNew() {
     // Clear signup flow flags since user has completed the entire flow
     localStorage.removeItem('isNewSignup');
     localStorage.removeItem('wasInSignupFlow');
+    localStorage.setItem('profileSetupComplete', 'true'); // Mark profile setup as complete
     console.log('🔍 FavoritesSetupNew: Navigating to /home after skipping');
     navigate('/home'); // Navigate to main events page
   };

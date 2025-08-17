@@ -507,31 +507,31 @@ export default function EventDetailPage() {
           
           // Priority 2: Process image fields (prioritize new WebP versions)
           const imageFields = [
-            { field: eventData.webPImage1, name: 'webPImage1', isWebP: true, fallback: eventData.Image1 },
-            { field: eventData.webPImage0, name: 'webPImage0', isWebP: true, fallback: eventData.Image0 },
-            { field: eventData.webPImage2, name: 'webPImage2', isWebP: true, fallback: eventData.Image2 },
-            { field: eventData.webPImage3, name: 'webPImage3', isWebP: true, fallback: eventData.Image3 },
-            { field: eventData.webPImage4, name: 'webPImage4', isWebP: true, fallback: eventData.Image4 },
-            { field: eventData.webPImage5, name: 'webPImage5', isWebP: true, fallback: eventData.Image5 },
-            { field: eventData.webPImage6, name: 'webPImage6', isWebP: true, fallback: eventData.Image6 },
-            { field: eventData.webPImage7, name: 'webPImage7', isWebP: true, fallback: eventData.Image7 },
-            { field: eventData.webPImage8, name: 'webPImage8', isWebP: true, fallback: eventData.Image8 },
-            { field: eventData.webPImage9, name: 'webPImage9', isWebP: true, fallback: eventData.Image9 }
+            { field: eventData.WebPImage1, name: 'WebPImage1', isWebP: true, fallback: eventData.Image1 },
+            { field: eventData.WebPImage0, name: 'WebPImage0', isWebP: true, fallback: eventData.Image0 },
+            { field: eventData.WebPImage2, name: 'WebPImage2', isWebP: true, fallback: eventData.Image2 },
+            { field: eventData.WebPImage3, name: 'WebPImage3', isWebP: true, fallback: eventData.Image3 },
+            { field: eventData.WebPImage4, name: 'WebPImage4', isWebP: true, fallback: eventData.Image4 },
+            { field: eventData.WebPImage5, name: 'WebPImage5', isWebP: true, fallback: eventData.Image5 },
+            { field: eventData.WebPImage6, name: 'WebPImage6', isWebP: true, fallback: eventData.Image6 },
+            { field: eventData.WebPImage7, name: 'WebPImage7', isWebP: true, fallback: eventData.Image7 },
+            { field: eventData.WebPImage8, name: 'WebPImage8', isWebP: true, fallback: eventData.Image8 },
+            { field: eventData.WebPImage9, name: 'WebPImage9', isWebP: true, fallback: eventData.Image9 }
           ];
           
           // Enhanced logging for WebP image debugging
           logger.debug('EventDetail - WebP Image Fields Check:', {
-            webPImage1: eventData.webPImage1 ? '✅ Available' : '❌ Not available',
-            webPImage0: eventData.webPImage0 ? '✅ Available' : '❌ Not available',
-            webPImage2: eventData.webPImage2 ? '✅ Available' : '❌ Not available',
-            webPImage3: eventData.webPImage3 ? '✅ Available' : '❌ Not available',
-            webPImage4: eventData.webPImage4 ? '✅ Available' : '❌ Not available',
-            webPImage5: eventData.webPImage5 ? '✅ Available' : '❌ Not available',
-            webPImage6: eventData.webPImage6 ? '✅ Available' : '❌ Not available',
-            webPImage7: eventData.webPImage7 ? '✅ Available' : '❌ Not available',
-            webPImage8: eventData.webPImage8 ? '✅ Available' : '❌ Not available',
-            webPImage9: eventData.webPImage9 ? '✅ Available' : '❌ Not available',
-            webPDisplayurl: eventData.webPDisplayurl ? '✅ Available' : '❌ Not available'
+            WebPImage1: eventData.WebPImage1 ? '✅ Available' : '❌ Not available',
+            WebPImage0: eventData.WebPImage0 ? '✅ Available' : '❌ Not available',
+            WebPImage2: eventData.WebPImage2 ? '✅ Available' : '❌ Not available',
+            WebPImage3: eventData.WebPImage3 ? '✅ Available' : '❌ Not available',
+            WebPImage4: eventData.WebPImage4 ? '✅ Available' : '❌ Not available',
+            WebPImage5: eventData.WebPImage5 ? '✅ Available' : '❌ Not available',
+            WebPImage6: eventData.WebPImage6 ? '✅ Available' : '❌ Not available',
+            WebPImage7: eventData.WebPImage7 ? '✅ Available' : '❌ Not available',
+            WebPImage8: eventData.WebPImage8 ? '✅ Available' : '❌ Not available',
+            WebPImage9: eventData.WebPImage9 ? '✅ Available' : '❌ Not available',
+            WebPDisplayurl: eventData.WebPDisplayurl ? '✅ Available' : '❌ Not available'
           });
           
           // Process each image field - prioritize WebP, then fallback to original
@@ -561,12 +561,12 @@ export default function EventDetailPage() {
           }
           
           // Priority 3: If no media found, try Displayurl as fallback (prioritize WebP)
-          if (mediaItems.length === 0 && (eventData.webPDisplayurl || eventData.Displayurl || eventData.displayurl || eventData.Displayurl_webp)) {
+          if (mediaItems.length === 0 && (eventData.WebPDisplayurl || eventData.Displayurl || eventData.displayurl || eventData.Displayurl_webp)) {
             logger.debug('EventDetail - No media found, trying Displayurl as fallback');
             
             // Prioritize new WebP version of Displayurl
-            const displayUrl = eventData.webPDisplayurl || eventData.Displayurl_webp || eventData.Displayurl || eventData.displayurl;
-            const isWebP = !!(eventData.webPDisplayurl || eventData.Displayurl_webp);
+            const displayUrl = eventData.WebPDisplayurl || eventData.Displayurl_webp || eventData.Displayurl || eventData.displayurl;
+            const isWebP = !!(eventData.WebPDisplayurl || eventData.Displayurl_webp);
             
             if (isWebP && displayUrl.startsWith('data:image/webp;base64,')) {
               // Use WebP data URL directly
@@ -814,6 +814,13 @@ export default function EventDetailPage() {
       return;
     }
 
+    // Handle free tickets differently
+    if (ticketPrice === 0 || event?.ticketType === 'Free ticket') {
+      console.log('🎫 Detected free ticket, calling handleFreeTicketDownload');
+      await handleFreeTicketDownload(tierIndex);
+      return;
+    }
+
     // Check if ticket is still available
     const tier = event?.ticketConfiguration?.pricingTiers?.[tierIndex];
     if (tier && tier.quantity && parseInt(tier.quantity) <= 0) {
@@ -856,6 +863,84 @@ export default function EventDetailPage() {
     } catch (error) {
       console.error('Error:', error);
       alert('Something went wrong. Please try again.');
+    } finally {
+      setPurchasingTicket(false);
+    }
+  };
+
+  // Handle free ticket download
+  const handleFreeTicketDownload = async (tierIndex = 0) => {
+    console.log('🎫 handleFreeTicketDownload called with tierIndex:', tierIndex);
+    const auth = getAuth();
+    const user = auth.currentUser;
+    
+    if (!user) {
+      console.log('🎫 No user found, returning');
+      return;
+    }
+    
+    console.log('🎫 Setting purchasing state to true');
+    setPurchasingTicket(true);
+    
+    try {
+      console.log('🎫 Downloading free ticket');
+      
+      // Get ticket details
+      const tier = event?.ticketConfiguration?.pricingTiers?.[tierIndex];
+      const ticketName = tier?.name || 'Free Ticket';
+      const ticketDescription = tier?.description || 'Free event ticket';
+      
+      // Create ticket document in user's tickets collection
+      const ticketData = {
+        userId: user.uid,
+        userEmail: user.email,
+        eventId: event.id,
+        eventName: eventTitle || event.name || event.title,
+        eventDate: event.startDate || event.date || event.eventDate || new Date(),
+        eventLocation: event.location || 'Location not specified',
+        ticketName: ticketName,
+        ticketDescription: ticketDescription,
+        price: 0,
+        currency: 'DKK',
+        status: 'active',
+        downloadDate: new Date(),
+        ticketType: 'free',
+        tierIndex: tierIndex,
+        // Add QR code data
+        qrData: `${event.id}-${user.uid}-${Date.now()}`,
+        // Add expiration if available
+        availableUntil: tier?.availableUntil || event?.ticketConfiguration?.availableUntil
+      };
+      
+      // Clean up undefined values
+      Object.keys(ticketData).forEach(key => {
+        if (ticketData[key] === undefined) {
+          ticketData[key] = null;
+        }
+      });
+      
+      // Save ticket to Firestore
+      console.log('🎫 About to save ticket data:', ticketData);
+      const ticketRef = doc(collection(db, 'tickets'));
+      console.log('🎫 Ticket reference created:', ticketRef);
+      
+      try {
+        await setDoc(ticketRef, ticketData);
+        console.log('🎫 Free ticket created successfully:', ticketRef.id);
+      } catch (firestoreError) {
+        console.error('🎫 Firestore error:', firestoreError);
+        throw firestoreError;
+      }
+      
+      // Show success message
+      alert('Free ticket downloaded successfully! You can find it in your Tickets page.');
+      
+      // Close the modal
+      setShowTicketModal(false);
+      
+    } catch (error) {
+      console.error('Error downloading free ticket:', error);
+      alert('Failed to download free ticket. Please try again.');
     } finally {
       setPurchasingTicket(false);
     }
@@ -1329,7 +1414,26 @@ export default function EventDetailPage() {
             {event?.ticketType === 'Free ticket' ? (
               <div>
                 <div style={{ fontWeight: 600, color: '#059669', marginBottom: '4px' }}>Free Event</div>
-                <div style={{ color: '#6b7280', fontSize: '14px' }}>No ticket purchase required</div>
+                <div style={{ color: '#6b7280', fontSize: '14px' }}>Download free ticket now</div>
+                {(event?.ticketConfiguration?.availableUntil || event?.ticketConfiguration?.pricingTiers?.[0]?.availableUntil) && (
+                  <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px', padding: '8px', background: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Available until:</span>
+                      <span style={{ fontWeight: 600 }}>
+                        {new Date(event.ticketConfiguration.availableUntil || event.ticketConfiguration.pricingTiers[0].availableUntil).toLocaleDateString()}
+                      </span>
+                    </div>
+                    {new Date() > new Date(event.ticketConfiguration.availableUntil || event.ticketConfiguration.pricingTiers[0].availableUntil) ? (
+                      <div style={{ color: '#dc2626', fontSize: '11px', marginTop: '4px', fontStyle: 'italic' }}>
+                        ⚠️ Free ticket download has expired
+                      </div>
+                    ) : (
+                      <div style={{ color: '#059669', fontSize: '11px', marginTop: '4px', fontStyle: 'italic' }}>
+                        ✅ Free tickets still available for download
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : event?.ticketConfiguration?.pricingTiers ? (
               <div>
@@ -1497,7 +1601,9 @@ export default function EventDetailPage() {
             color: '#fff'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>Buy Tickets</h3>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                {event?.ticketType === 'Free ticket' ? 'Download Free Ticket' : 'Buy Tickets'}
+              </h3>
               <button 
                 onClick={() => {
                   console.log('🎫 Closing ticket modal');
@@ -1537,75 +1643,125 @@ export default function EventDetailPage() {
               })}
               
               {/* ALWAYS use new ticket system - never fall back to old */}
+
               {event?.ticketConfiguration?.pricingTiers ? (
-                // Show dynamic pricing tiers from ticket configuration
-                event.ticketConfiguration.pricingTiers.map((tier, index) => {
-                  const availableQuantity = parseInt(tier.quantity) || 0;
-                  const maxPerPerson = parseInt(event.ticketConfiguration.maxTicketsPerPerson) || 1;
-                  const isSoldOut = availableQuantity <= 0;
-                  
-                  return (
-              <button
-                      key={index}
-                      onClick={() => handleBuyTicket(parseFloat(tier.price), index)}
-                      disabled={purchasingTicket || !tier.price || parseFloat(tier.price) <= 0 || isSoldOut}
-                style={{
-                        background: index === 0 
-                          ? 'linear-gradient(90deg, #3E29F0 0%, #a445ff 100%)'
-                          : 'linear-gradient(90deg, #F941F9 0%, #a445ff 100%)',
-                  color: '#fff',
-                  padding: '16px',
-                  borderRadius: '12px',
-                  border: 'none',
-                  fontWeight: 600,
-                  fontSize: '16px',
-                        cursor: (purchasingTicket || !tier.price || parseFloat(tier.price) <= 0 || isSoldOut) ? 'not-allowed' : 'pointer',
-                        opacity: (purchasingTicket || !tier.price || parseFloat(tier.price) <= 0 || isSoldOut) ? 0.7 : 1,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}
-              >
-                      <div style={{ textAlign: 'left' }}>
-                        <div>{tier.name}</div>
-                        {tier.description && (
-                          <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '2px' }}>
-                            {tier.description}
-                          </div>
-                        )}
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div>{tier.price ? `${tier.price} DKK` : 'Free'}</div>
-                        <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '2px' }}>
-                          {isSoldOut ? 'Sold Out' : `${availableQuantity} available`}
-                          {maxPerPerson > 1 && ` (max ${maxPerPerson} per person)`}
+                // Check if ALL pricing tiers are free (price = 0) - more robust check
+                (event.ticketConfiguration.pricingTiers.every(tier => {
+                  const price = tier.price;
+                  return price === 0 || price === '0' || price === '0.00' || parseFloat(price) === 0;
+                }) || event?.ticketType === 'Free ticket') ? (
+                  // All tiers are free - show free ticket button
+                  <button
+                    onClick={() => {
+                      console.log('🎫 Free ticket button clicked!');
+                      console.log('🎫 Event type:', event?.ticketType);
+                      console.log('🎫 Purchasing state:', purchasingTicket);
+                      handleBuyTicket(0);
+                    }}
+                    disabled={purchasingTicket}
+                    style={{
+                      background: purchasingTicket ? '#6b7280' : 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                      color: '#fff',
+                      padding: '16px',
+                      borderRadius: '12px',
+                      border: '2px solid #fff',
+                      fontWeight: 600,
+                      fontSize: '16px',
+                      cursor: purchasingTicket ? 'not-allowed' : 'pointer',
+                      opacity: purchasingTicket ? 0.5 : 1,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      position: 'relative',
+                      zIndex: 9999,
+                      minHeight: '60px',
+                      width: '100%'
+                    }}
+                  >
+                    <span style={{ fontWeight: 'bold', fontSize: '18px' }}>Download Free Ticket</span>
+                    <span style={{ fontWeight: 'bold', fontSize: '18px' }}>Free</span>
+                    {purchasingTicket && <span style={{ fontSize: '12px', opacity: 0.8 }}>Processing...</span>}
+                  </button>
+                ) : (
+                  // Show dynamic pricing tiers from ticket configuration (for paid tickets)
+                  event.ticketConfiguration.pricingTiers.map((tier, index) => {
+                    const availableQuantity = parseInt(tier.quantity) || 0;
+                    const maxPerPerson = parseInt(event.ticketConfiguration.maxTicketsPerPerson) || 1;
+                    const isSoldOut = availableQuantity <= 0;
+                    
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => handleBuyTicket(parseFloat(tier.price), index)}
+                        disabled={purchasingTicket || !tier.price || parseFloat(tier.price) <= 0 || isSoldOut}
+                        style={{
+                          background: index === 0 
+                            ? 'linear-gradient(90deg, #3E29F0 0%, #a445ff 100%)'
+                            : 'linear-gradient(90deg, #F941F9 0%, #a445ff 100%)',
+                          color: '#fff',
+                          padding: '16px',
+                          borderRadius: '12px',
+                          border: 'none',
+                          fontWeight: 600,
+                          fontSize: '16px',
+                          cursor: (purchasingTicket || !tier.price || parseFloat(tier.price) <= 0 || isSoldOut) ? 'not-allowed' : 'pointer',
+                          opacity: (purchasingTicket || !tier.price || parseFloat(tier.price) <= 0 || isSoldOut) ? 0.7 : 1,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <div style={{ textAlign: 'left' }}>
+                          <div>{tier.name}</div>
+                          {tier.description && (
+                            <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '2px' }}>
+                              {tier.description}
+                            </div>
+                          )}
                         </div>
-                      </div>
-              </button>
-                  );
-                })
+                        <div style={{ textAlign: 'right' }}>
+                          <div>{tier.price ? `${tier.price} DKK` : 'Free'}</div>
+                          <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '2px' }}>
+                            {isSoldOut ? 'Sold Out' : `${availableQuantity} available`}
+                            {maxPerPerson > 1 && ` (max ${maxPerPerson} per person)`}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })
+                )
               ) : event?.ticketType === 'Free ticket' ? (
                 // Show free ticket option
               <button
-                  onClick={() => handleBuyTicket(0)}
+                  onClick={() => {
+                    console.log('🎫 Free ticket button clicked!');
+                    console.log('🎫 Event type:', event?.ticketType);
+                    console.log('🎫 Purchasing state:', purchasingTicket);
+                    handleBuyTicket(0);
+                  }}
                 disabled={purchasingTicket}
                 style={{
-                    background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                    background: purchasingTicket ? '#6b7280' : 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
                   color: '#fff',
                   padding: '16px',
                   borderRadius: '12px',
-                  border: 'none',
+                  border: '2px solid #fff',
                   fontWeight: 600,
                   fontSize: '16px',
                   cursor: purchasingTicket ? 'not-allowed' : 'pointer',
-                  opacity: purchasingTicket ? 0.7 : 1,
+                  opacity: purchasingTicket ? 0.5 : 1,
                   display: 'flex',
                   justifyContent: 'space-between',
-                  alignItems: 'center'
+                  alignItems: 'center',
+                  position: 'relative',
+                  zIndex: 9999,
+                  minHeight: '60px',
+                  width: '100%'
                 }}
               >
-                  <span>Free Ticket</span>
-                  <span>Free</span>
+                  <span style={{ fontWeight: 'bold', fontSize: '18px' }}>Download Free Ticket</span>
+                  <span style={{ fontWeight: 'bold', fontSize: '18px' }}>Free</span>
+                  {purchasingTicket && <span style={{ fontSize: '12px', opacity: 0.8 }}>Processing...</span>}
               </button>
               ) : event?.ticketType === 'No ticket' ? (
                 // Show no ticket available message
@@ -1641,9 +1797,11 @@ export default function EventDetailPage() {
               )}
             </div>
 
+
+            
             {purchasingTicket && (
               <div style={{ textAlign: 'center', marginTop: '16px', color: '#a445ff' }}>
-                Creating checkout session...
+                {event?.ticketType === 'Free ticket' ? 'Downloading free ticket...' : 'Creating checkout session...'}
               </div>
             )}
           </div>
