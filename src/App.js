@@ -10,7 +10,7 @@ import EventDetailPage from "./EventDetailPage";
 import BarsList from "./BarsList";
 import FrontPage from './FrontPage';
 import UserTypeSelect from './UserTypeSelect';
-import PrivateUserSignupChoice from './PrivateUserSignupChoice';
+
 import { useUserType } from './UserTypeContext';
 import CompanyVerificationSetup from './CompanyVerificationSetup';
 import CompanyVerification from './CompanyVerification';
@@ -37,7 +37,7 @@ import PaymentCancel from './PaymentCancel';
 import AdminDashboard from './AdminDashboard';
 import UserTypeDetector from './UserTypeDetector';
 import { autoArchiveAllOutdatedEvents } from './autoArchiveUtils';
-import { debugSpecificEvent, debugAllEvents } from './debugAutoArchive';
+
 import { cleanupDuplicates } from './autoArchiveUtils';
 
 // Firebase config for Safari PWA handling
@@ -612,7 +612,7 @@ function AuthPage() {
     }}>
       {/* Back Button */}
       <button 
-        onClick={() => navigate(tab === 'signup' ? '/private-signup-choice' : '/select-type')}
+        onClick={() => navigate('/select-type')}
         style={{
           position: 'absolute',
           top: 20,
@@ -783,7 +783,7 @@ function AuthPage() {
           {tab === 'login' ? (
             <>Don’t have an account? <span style={{ color: '#F941F9', cursor: 'pointer', fontWeight: 600 }} onClick={() => { setTab('signup'); navigate('/signup'); }}>Sign Up</span></>
           ) : (
-            <>Already have an account? <span style={{ color: '#F941F9', cursor: 'pointer', fontWeight: 600 }} onClick={() => { setTab('login'); navigate('/login'); }}>Log In</span></>
+            <>Continue as <span style={{ color: '#F941F9', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }} onClick={() => { localStorage.setItem('signUpLater', 'true'); navigate('/home'); }}>Guest</span></>
           )}
         </div>
         <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, textAlign: 'center', marginTop: 24, maxWidth: 280 }}>
@@ -1173,7 +1173,7 @@ function App() {
             <Routes>
               <Route path="/" element={<FrontPage />} />
               <Route path="/select-type" element={<UserTypeSelect />} />
-              <Route path="/private-signup-choice" element={<PrivateUserSignupChoice />} />
+
               <Route path="/login" element={<AuthPage />} />
               <Route path="/signup" element={<AuthPage />} />
               <Route path="/company-signup" element={<AuthPageCompany />} />

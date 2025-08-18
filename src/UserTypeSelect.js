@@ -12,7 +12,7 @@ function UserTypeSelect() {
     if (type === 'company') {
       navigate('/company-signup');
     } else {
-      navigate('/private-signup-choice');
+      navigate('/signup');
     }
   };
 
