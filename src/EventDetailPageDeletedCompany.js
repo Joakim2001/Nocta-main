@@ -18,6 +18,11 @@ export default function EventDetailPageDeletedCompany() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [touchStart, setTouchStart] = useState(null);
   const [touchEnd, setTouchEnd] = useState(null);
+
+  // Debug: Monitor imageUrls state changes
+  useEffect(() => {
+    console.log('🖼️ EventDetailPageDeletedCompany - imageUrls state changed:', imageUrls);
+  }, [imageUrls]);
   
   // Debug logging
   console.log('🔍 EventDetailPageDeletedCompany - Component loaded');
@@ -95,6 +100,17 @@ export default function EventDetailPageDeletedCompany() {
             const urls = [];
             for (const { field: imagePath } of validImageFields) {
               if (imagePath.startsWith('http')) {
+                // Filter out expired Instagram CDN URLs
+                const isExpiredInstagram = imagePath.includes('instagram.fjdo1-1.fna.fbcdn.net') || 
+                                         imagePath.includes('instagram.fjdo1-2.fna.fbcdn.net') ||
+                                         imagePath.includes('cdninstagram.com');
+                
+                if (isExpiredInstagram) {
+                  console.log('⚠️ EventDetailPageDeletedCompany - Skipping expired Instagram CDN URL in Path 1:', imagePath.substring(0, 50) + '...');
+                  continue; // Skip this URL
+                }
+                
+                console.log('✅ EventDetailPageDeletedCompany - Valid HTTP URL in Path 1:', imagePath.substring(0, 50) + '...');
                 urls.push(imagePath);
               } else {
                 try {
@@ -107,14 +123,23 @@ export default function EventDetailPageDeletedCompany() {
               }
             }
             
+            console.log('🖼️ EventDetailPageDeletedCompany - Path 1: Final URLs after filtering:', urls);
+            
             if (urls.length > 0) {
+              console.log('✅ EventDetailPageDeletedCompany - Path 1: Found valid URLs, using them');
               setImageUrls(urls);
             } else {
-              setImageUrls(['/default-tyrolia.jpg']);
+              console.log('⚠️ EventDetailPageDeletedCompany - Path 1: No valid URLs, proceeding to loadEventImage for WebP fallback');
+              // Don't set default image yet - let loadEventImage check for WebP images first
             }
           } else {
-            setImageUrls(['/default-tyrolia.jpg']);
+            console.log('⚠️ EventDetailPageDeletedCompany - Path 1: No valid image fields, proceeding to loadEventImage for WebP fallback');
+            // Don't set default image yet - let loadEventImage check for WebP images first
           }
+          
+          // After Path 1 completes, always call loadEventImage to check for WebP images
+          console.log('🔄 EventDetailPageDeletedCompany - Path 1 completed, calling loadEventImage for WebP fallback');
+          await loadEventImage(eventData);
         } else {
           console.log('🔍 No document found with direct ID, searching by originalId...');
           
@@ -158,52 +183,276 @@ export default function EventDetailPageDeletedCompany() {
 
     // Helper function to load event image
     async function loadEventImage(eventData) {
+      console.log('🖼️ EventDetailPageDeletedCompany - === LOAD EVENT IMAGE CALLED ===');
+      console.log('🖼️ EventDetailPageDeletedCompany - Loading images for event:', eventData.id);
+      console.log('🖼️ EventDetailPageDeletedCompany - Event data keys:', Object.keys(eventData));
+      
+      // Log ALL image-related fields to find the working images
+      console.log('🔍 EventDetailPageDeletedCompany - === COMPREHENSIVE IMAGE FIELD ANALYSIS ===');
+      const allImageFields = Object.keys(eventData).filter(key => 
+        key.toLowerCase().includes('image') || 
+        key.toLowerCase().includes('display') || 
+        key.toLowerCase().includes('url') ||
+        key.toLowerCase().includes('webp')
+      );
+      
+      console.log('🔍 EventDetailPageDeletedCompany - All image-related fields:', allImageFields);
+      
+      // Log the actual content of each image field
+      allImageFields.forEach(field => {
+        const value = eventData[field];
+        if (value) {
+          // Only call string methods if the value is actually a string
+          const isString = typeof value === 'string';
+          console.log(`🔍 EventDetailPageDeletedCompany - ${field}:`, {
+            type: typeof value,
+            length: isString ? value.length : 'N/A',
+            preview: isString ? value.substring(0, 100) + '...' : String(value),
+            isHttp: isString && value.startsWith('http'),
+            isDataUrl: isString && value.startsWith('data:'),
+            isInstagram: isString && (value.includes('instagram.com') || value.includes('fbcdn.net')),
+            isFirebase: isString && (value.includes('firebasestorage.googleapis.com') || value.includes('nocta_bucket'))
+          });
+        } else {
+          console.log(`🔍 EventDetailPageDeletedCompany - ${field}: null/undefined`);
+        }
+      });
+      
+      // NEW APPROACH: Try to find ANY working image from ALL available fields
+      console.log('🔄 EventDetailPageDeletedCompany - === TRYING TO FIND ANY WORKING IMAGE ===');
+      
+      // Create a comprehensive list of ALL possible image sources, prioritized by likelihood of working
+      const allPossibleImages = [
+        // Priority 1: Direct image URLs that might still work
+        eventData.imageUrls,
+        eventData.images_original,
+        eventData.images_storedInStorage,
+        
+        // Priority 2: Individual image fields
+        eventData.Image1, eventData.Image0, eventData.Image2, eventData.Image3, 
+        eventData.Image4, eventData.Image5, eventData.Image6, eventData.Image7,
+        eventData.Displayurl,
+        
+        // Priority 3: WebP versions (but skip if they're just defaults)
+        eventData.WebPImage1, eventData.WebPImage0, eventData.WebPImage2, eventData.WebPImage3,
+        eventData.WebPImage4, eventData.WebPImage5, eventData.WebPImage6, eventData.WebPDisplayurl,
+        
+        // Priority 4: Any other image-related fields
+        eventData.url, eventData.inputurl
+      ].filter(Boolean); // Remove null/undefined values
+      
+      console.log('🔄 EventDetailPageDeletedCompany - All possible image sources:', allPossibleImages.length);
+      
+      // Try to find ALL working images by testing each source
+      const workingImages = [];
+      
+      for (const imageSource of allPossibleImages) {
+        if (!imageSource) continue;
+        
+        // Handle arrays (like imageUrls)
+        const imagesToTest = Array.isArray(imageSource) ? imageSource : [imageSource];
+        
+        for (const image of imagesToTest) {
+          if (!image || typeof image !== 'string') continue;
+          
+          console.log('🔄 EventDetailPageDeletedCompany - Testing image source:', {
+            source: imageSource === eventData.imageUrls ? 'imageUrls' : 
+                   imageSource === eventData.images_original ? 'images_original' :
+                   imageSource === eventData.images_storedInStorage ? 'images_storedInStorage' :
+                   typeof imageSource === 'string' ? 'individual_field' : 'unknown',
+            image: image.substring(0, 100) + '...',
+            type: image.startsWith('data:') ? 'data_url' : 
+                  image.startsWith('http') ? 'http_url' : 'storage_path'
+          });
+          
+          // Test if this image is accessible
+          try {
+            if (image.startsWith('data:')) {
+              // Data URLs are always accessible
+              console.log('✅ EventDetailPageDeletedCompany - Data URL found and accessible');
+              workingImages.push(image);
+            } else if (image.startsWith('http')) {
+              // Test HTTP URLs
+              const response = await fetch(image, { method: 'HEAD' });
+              if (response.ok) {
+                console.log('✅ EventDetailPageDeletedCompany - HTTP URL is accessible:', response.status);
+                workingImages.push(image);
+              } else {
+                console.log('⚠️ EventDetailPageDeletedCompany - HTTP URL failed:', response.status);
+              }
+            } else {
+              // Try storage paths
+              try {
+                const url = await getDownloadURL(ref(storage, image));
+                console.log('✅ EventDetailPageDeletedCompany - Storage path is accessible');
+                workingImages.push(url);
+              } catch (e) {
+                console.log('⚠️ EventDetailPageDeletedCompany - Storage path failed:', e.message);
+              }
+            }
+          } catch (error) {
+            console.log('⚠️ EventDetailPageDeletedCompany - Error testing image:', error.message);
+          }
+        }
+      }
+      
+      if (workingImages.length > 0) {
+        console.log('✅ EventDetailPageDeletedCompany - Found', workingImages.length, 'working images:', workingImages);
+        setImageUrls(workingImages);
+        return;
+      }
+      
+      console.log('❌ EventDetailPageDeletedCompany - No working images found, will use default');
+      
+      // Check company-created event images first, but filter out expired Instagram CDN URLs
+      if (eventData.imageUrls && Array.isArray(eventData.imageUrls) && eventData.imageUrls.length > 0) {
+        console.log('🖼️ EventDetailPageDeletedCompany - Found company event imageUrls:', eventData.imageUrls);
+        
+        // Filter out expired Instagram CDN URLs
+        console.log('🖼️ EventDetailPageDeletedCompany - Starting filter process for', eventData.imageUrls.length, 'URLs');
+        
+        const validImageUrls = eventData.imageUrls.filter(url => {
+          const isExpiredInstagram = url.includes('instagram.fjdo1-1.fna.fbcdn.net') || 
+                                   url.includes('instagram.fjdo1-2.fna.fbcdn.net') ||
+                                   url.includes('cdninstagram.com');
+          
+          console.log('🖼️ EventDetailPageDeletedCompany - Processing URL:', url.substring(0, 50) + '...', 'isExpiredInstagram:', isExpiredInstagram);
+          
+          if (isExpiredInstagram) {
+            console.log('⚠️ EventDetailPageDeletedCompany - Skipping expired Instagram CDN URL:', url.substring(0, 50) + '...');
+            return false;
+          }
+          
+          console.log('✅ EventDetailPageDeletedCompany - Valid image URL found:', url.substring(0, 50) + '...');
+          return true;
+        });
+        
+        console.log('🖼️ EventDetailPageDeletedCompany - After filtering, validImageUrls length:', validImageUrls.length);
+        console.log('🖼️ EventDetailPageDeletedCompany - After filtering, validImageUrls:', validImageUrls);
+        
+        if (validImageUrls.length > 0) {
+          console.log('✅ EventDetailPageDeletedCompany - Using valid company event imageUrls:', validImageUrls);
+          setImageUrls(validImageUrls);
+          return;
+        } else {
+          console.log('⚠️ EventDetailPageDeletedCompany - All company imageUrls are expired, falling back to WebP images');
+        }
+      } else {
+        console.log('🖼️ EventDetailPageDeletedCompany - No company event imageUrls found, proceeding to WebP images');
+      }
     
       // Prioritize WebP images first
       let imagePath = null;
       
       // Check for WebP images in order of preference
+      console.log('🖼️ EventDetailPageDeletedCompany - Raw eventData keys for WebP:', Object.keys(eventData).filter(key => key.toLowerCase().includes('webp')));
+      
       const webPFields = [
-        eventData.webPImage1, eventData.webPImage0, eventData.webPImage2, eventData.webPImage3, 
-        eventData.webPImage4, eventData.webPImage5, eventData.webPImage6, eventData.webPDisplayurl
+        eventData.WebPImage1, eventData.WebPImage0, eventData.WebPImage2, eventData.WebPImage3, 
+        eventData.WebPImage4, eventData.WebPImage5, eventData.WebPImage6, eventData.WebPDisplayurl
       ];
       
-      for (const webPField of webPFields) {
-        if (webPField && webPField.startsWith('data:image/webp;base64,')) {
-          console.log('EventDetailPageDeletedCompany - Using WebP image');
-          imagePath = webPField;
-          break;
-        }
-      }
+      console.log('🖼️ EventDetailPageDeletedCompany - Checking WebP fields:', webPFields.map(field => field ? field.substring(0, 50) + '...' : 'null'));
       
-      // If no WebP images found, try original images
-      if (!imagePath) {
-        const originalFields = [
-          eventData.Image1, eventData.Image0, eventData.Image2, eventData.Image3, 
-          eventData.Image4, eventData.Image5, eventData.Image6, eventData.image1
-        ];
-        
-        for (const originalField of originalFields) {
-          if (originalField) {
-            imagePath = originalField;
+      for (const webPField of webPFields) {
+        if (webPField && webPField !== null) {
+          const isWebPDataUrl = webPField.startsWith('data:image/webp;base64,');
+          const isWebPStorageUrl = webPField.includes('webp_') && (webPField.includes('firebasestorage.googleapis.com') || webPField.includes('nocta_bucket'));
+          
+          console.log('🖼️ EventDetailPageDeletedCompany - WebP field check:', {
+            field: webPField ? webPField.substring(0, 50) + '...' : 'null',
+            isWebPDataUrl,
+            isWebPStorageUrl
+          });
+          
+          if (isWebPDataUrl || isWebPStorageUrl) {
+            // Check if this WebP image is actually a default placeholder
+            const isDefaultWebP = webPField && webPField.includes('default-tyrolia') || 
+                                 (webPField && webPField.length < 1000); // Very short base64 likely means default image
+            
+            if (isDefaultWebP) {
+              console.log('⚠️ EventDetailPageDeletedCompany - WebP image appears to be default placeholder, skipping');
+              continue; // Try next WebP field
+            }
+            
+            console.log('✅ EventDetailPageDeletedCompany - Using valid WebP image');
+            imagePath = webPField;
             break;
           }
         }
       }
       
+      // If no WebP images found, try original images
+      if (!imagePath) {
+        console.log('🖼️ EventDetailPageDeletedCompany - No valid WebP images found, trying original images');
+        const originalFields = [
+          eventData.Image1, eventData.Image0, eventData.Image2, eventData.Image3, 
+          eventData.Image4, eventData.Image5, eventData.Image6, eventData.Displayurl
+        ];
+        
+        console.log('🖼️ EventDetailPageDeletedCompany - Original image fields:', originalFields.map(field => field ? field.substring(0, 50) + '...' : 'null'));
+        
+        for (const originalField of originalFields) {
+          if (originalField) {
+            // Check if this is an Instagram URL that might still work
+            const isInstagramUrl = originalField.includes('instagram.com') || 
+                                  originalField.includes('fbcdn.net') || 
+                                  originalField.includes('cdninstagram.com');
+            
+            if (isInstagramUrl) {
+              console.log('🖼️ EventDetailPageDeletedCompany - Found Instagram URL, will try to use it:', originalField.substring(0, 50) + '...');
+              imagePath = originalField;
+              break;
+            } else if (originalField.startsWith('http')) {
+              console.log('🖼️ EventDetailPageDeletedCompany - Found other HTTP URL:', originalField.substring(0, 50) + '...');
+              imagePath = originalField;
+              break;
+            } else {
+              console.log('🖼️ EventDetailPageDeletedCompany - Found storage path:', originalField);
+              imagePath = originalField;
+              break;
+            }
+          }
+        }
+      }
+      
       if (imagePath) {
-        if (imagePath.startsWith('data:') || imagePath.startsWith('http')) {
+        console.log('🖼️ EventDetailPageDeletedCompany - Final image path:', imagePath.substring(0, 100) + '...');
+        
+        // If it's an Instagram URL, test if it's accessible before using it
+        if (imagePath.includes('instagram.com') || imagePath.includes('fbcdn.net') || imagePath.includes('cdninstagram.com')) {
+          console.log('🖼️ EventDetailPageDeletedCompany - Testing Instagram URL accessibility...');
+          try {
+            // Test the URL with a simple fetch to see if it's accessible
+            const response = await fetch(imagePath, { method: 'HEAD' });
+            if (response.ok) {
+              console.log('✅ EventDetailPageDeletedCompany - Instagram URL is accessible, using it');
+              setImageUrls([imagePath]);
+            } else {
+              console.log('⚠️ EventDetailPageDeletedCompany - Instagram URL returned status:', response.status, 'falling back to default');
+              setImageUrls(['/default-tyrolia.jpg']);
+            }
+          } catch (error) {
+            console.log('⚠️ EventDetailPageDeletedCompany - Instagram URL failed to load:', error.message, 'falling back to default');
+            setImageUrls(['/default-tyrolia.jpg']);
+          }
+        } else if (imagePath.startsWith('data:') || imagePath.startsWith('http')) {
+          console.log('✅ EventDetailPageDeletedCompany - Setting imageUrls to:', [imagePath]);
           setImageUrls([imagePath]); // Store as an array for carousel
         } else {
           try {
             const url = await getDownloadURL(ref(storage, imagePath));
+            console.log('✅ EventDetailPageDeletedCompany - Setting imageUrls to:', [url]);
             setImageUrls([url]); // Store as an array for carousel
           } catch (e) {
-            console.error("Error getting download URL:", e);
+            console.error("❌ EventDetailPageDeletedCompany - Error getting download URL:", e);
+            console.log('✅ EventDetailPageDeletedCompany - Setting imageUrls to default');
             setImageUrls(['/default-tyrolia.jpg']); // Store as an array for carousel
           }
         }
       } else {
+        console.log('❌ EventDetailPageDeletedCompany - No images found, using default');
+        console.log('✅ EventDetailPageDeletedCompany - Setting imageUrls to default');
         setImageUrls(['/default-tyrolia.jpg']); // Store as an array for carousel
       }
     }
@@ -444,6 +693,7 @@ export default function EventDetailPageDeletedCompany() {
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
         >
+          {console.log('🖼️ EventDetailPageDeletedCompany - Rendering imageUrls:', imageUrls, 'Length:', imageUrls?.length)}
           {imageUrls && imageUrls.length > 0 && (
             <>
               <img 

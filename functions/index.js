@@ -2426,7 +2426,7 @@ exports.findEventImages = functions.https.onCall(async (data, context) => {
 });
 
 // Proxy image function to bypass CORS restrictions
-  exports.proxyImage = functions.https.onCall(async (data, context) => {
+exports.proxyImage = functions.https.onCall(async (data, context) => {
   try {
     console.log('🔍 proxyImage - Raw input data keys:', Object.keys(data || {}));
     

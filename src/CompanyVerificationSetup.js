@@ -307,6 +307,39 @@ function CompanyVerificationSetup() {
       position: 'relative',
     }}>
       <div style={{ textAlign: 'center', width: '100%', maxWidth: 400, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
+        
+        {/* Back Button */}
+        <button 
+          onClick={() => navigate(-1)}
+          style={{
+            position: 'absolute',
+            top: 20,
+            left: 20,
+            background: 'rgba(255, 255, 255, 0.1)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '50%',
+            width: 40,
+            height: 40,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            color: '#00b3ff',
+            transition: 'all 0.2s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.background = 'rgba(255, 255, 255, 0.2)';
+            e.target.style.transform = 'scale(1.1)';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+            e.target.style.transform = 'scale(1)';
+          }}
+        >
+          <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+          </svg>
+        </button>
 
         <h2 style={{ color: '#fff', fontWeight: 700, fontSize: 22, margin: 0, textAlign: 'center' }}>Company Setup</h2>
         <p style={{ color: '#ccc', fontSize: 16, margin: '8px 0 32px 0', opacity: 0.85, textAlign: 'center' }}>
