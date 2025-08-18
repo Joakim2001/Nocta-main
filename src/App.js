@@ -21,6 +21,7 @@ import BottomNav from './BottomNav';
 import BottomNavCompany from './BottomNavCompany';
 import AuthPageCompany from './AuthPageCompany';
 import CreateCompanyEvent from './CreateCompanyEvent';
+import CompanyProfilePage from './CompanyProfilePage';
 import TicketConfiguration from './TicketConfiguration';
 
 import ChatPagePrivate from "./ChatPagePrivate";
@@ -1153,7 +1154,7 @@ function App() {
 
   const hideNavRoutes = ['/', '/login', '/signup', '/profile-setup', '/favorites-setup', '/select-type', '/private-signup-choice', '/company-setup', '/company-setup-final', '/company-verification-setup', '/company-verification', '/verification-pending', '/company-login', '/company-signup'];
   const shouldShowBottomNav = !hideNavRoutes.includes(location.pathname) && !location.pathname.startsWith('/company-deleted-event/') && !location.pathname.startsWith('/event/');
-  const shouldShowCompanyNav = location.pathname === '/company-events' || location.pathname.startsWith('/company-create-event') || location.pathname === '/ticket-configuration';
+  const shouldShowCompanyNav = location.pathname === '/company-events' || location.pathname.startsWith('/company-create-event') || location.pathname === '/ticket-configuration' || location.pathname === '/company-profile';
 
   if (checkingProfile) {
     return <div className="flex justify-center items-center min-h-screen text-white">Loading profile...</div>;
@@ -1177,8 +1178,9 @@ function App() {
               <Route path="/signup" element={<AuthPage />} />
               <Route path="/company-signup" element={<AuthPageCompany />} />
               <Route path="/company-login" element={<AuthPageCompany />} />
-              <Route path="/company-create-event" element={<CompanyCreateSelect />} />
-              <Route path="/company-create-event/new" element={<CreateCompanyEvent />} />
+                      <Route path="/company-create-event" element={<CompanyCreateSelect />} />
+        <Route path="/company-create-event/new" element={<CreateCompanyEvent />} />
+        <Route path="/company-profile" element={<CompanyProfilePage />} />
               <Route path="/ticket-configuration" element={<TicketConfiguration />} />
               <Route path="/profile-setup" element={<ProfileSetup />} />
               <Route path="/favorites-setup" element={<FavoritesSetupNew />} />

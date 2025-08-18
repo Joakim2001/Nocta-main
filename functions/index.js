@@ -2426,7 +2426,7 @@ exports.findEventImages = functions.https.onCall(async (data, context) => {
 });
 
 // Proxy image function to bypass CORS restrictions
-exports.proxyImage = functions.https.onCall(async (data, context) => {
+  exports.proxyImage = functions.https.onCall(async (data, context) => {
   try {
     console.log('🔍 proxyImage - Raw input data keys:', Object.keys(data || {}));
     
@@ -2463,9 +2463,21 @@ exports.proxyImage = functions.https.onCall(async (data, context) => {
     const response = await axios.get(cleanedUrl, {
       responseType: 'arraybuffer',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://www.instagram.com/',
+        'Sec-Fetch-Dest': 'image',
+        'Sec-Fetch-Mode': 'no-cors',
+        'Sec-Fetch-Site': 'cross-site',
+        'Cache-Control': 'no-cache'
       },
-      timeout: 10000 // 10 second timeout
+      timeout: 15000, // 15 second timeout
+      maxRedirects: 5,
+      validateStatus: function (status) {
+        return status >= 200 && status < 400; // Accept redirects
+      }
     });
     
     console.log('✅ proxyImage - Successfully fetched image');
@@ -2495,10 +2507,24 @@ exports.proxyImage = functions.https.onCall(async (data, context) => {
     console.error('❌ proxyImage - Function error:', error);
     console.error('❌ proxyImage - Error message:', error.message);
     
+    // Log additional error details for debugging
+    if (error.response) {
+      console.error('❌ proxyImage - Response status:', error.response.status);
+      console.error('❌ proxyImage - Response headers:', error.response.headers);
+      console.error('❌ proxyImage - Response data:', error.response.data);
+    } else if (error.request) {
+      console.error('❌ proxyImage - Request was made but no response received');
+      console.error('❌ proxyImage - Request details:', error.request);
+    } else {
+      console.error('❌ proxyImage - Error setting up request:', error.message);
+    }
+    
     return {
       success: false,
       error: error.message,
-      originalUrl: imageUrl
+      originalUrl: imageUrl,
+      errorType: error.response ? 'response' : error.request ? 'request' : 'setup',
+      statusCode: error.response?.status || null
     };
   }
 });

@@ -11,6 +11,12 @@ function CreateCompanyEvent() {
   const location = useLocation();
   const ticketOption = location.state?.ticketOption;
   const ticketConfiguration = location.state?.ticketConfiguration;
+  const templateData = location.state?.templateData;
+  
+  console.log('📋 CreateCompanyEvent - location.state:', location.state);
+  console.log('📋 CreateCompanyEvent - templateData:', templateData);
+  console.log('📋 CreateCompanyEvent - location.pathname:', location.pathname);
+  console.log('📋 CreateCompanyEvent - location.search:', location.search);
   
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -27,7 +33,7 @@ function CreateCompanyEvent() {
   const [uploading, setUploading] = useState(false);
 
 
-  const CustomDateInput = ({ value, onChange }) => {
+  const CustomDateInput = ({ value, onChange, placeholder = "dd-mm-yyyy" }) => {
     const [isText, setIsText] = useState(!value);
     const inputRef = useRef(null);
 
@@ -43,8 +49,24 @@ function CreateCompanyEvent() {
             setIsText(true);
           }
         }}
-        placeholder="dd-mm-yyyy"
-        style={{...inputBoxStyle, flex: 1}}
+        placeholder={placeholder}
+        style={{
+          ...inputBoxStyle, 
+          flex: 1,
+          // Mobile-specific improvements
+          WebkitAppearance: 'none',
+          MozAppearance: 'none',
+          appearance: 'none',
+          // Ensure calendar icon is visible on mobile
+          backgroundImage: isText ? 'none' : 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23007CB2%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%204.9A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%204.9%2012.9l128%20127.1c2.2%202.2%205.2%203.2%208.1%203.2s5.9-1%208.1-3.2L287%2095c3.1-3.1%204.9-7.4%204.9-12.9%200-5-1.8-9.3-4.9-12.7z%22/%3E%3C/svg%3E")',
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'right 8px center',
+          backgroundSize: '16px 12px',
+          paddingRight: '40px',
+          // Better mobile touch targets
+          minHeight: '48px',
+          fontSize: '16px', // Prevents zoom on iOS
+        }}
       />
     );
   };
@@ -65,6 +87,129 @@ function CreateCompanyEvent() {
       setImagePreview([]);
     }
   }, [imageFiles]);
+
+  // Pre-fill form fields if template data is available
+  useEffect(() => {
+    console.log('📋 useEffect triggered, templateData:', templateData);
+    
+    let dataToUse = templateData;
+    
+    // If no template data in location state, try localStorage and sessionStorage
+    if (!dataToUse) {
+      // Try localStorage first (for deleted event page)
+      let storedData = localStorage.getItem('eventTemplateData');
+      if (storedData) {
+        try {
+          dataToUse = JSON.parse(storedData);
+          console.log('📋 Found template data in localStorage:', dataToUse);
+        } catch (error) {
+          console.error('📋 Error parsing localStorage data:', error);
+        }
+      }
+      
+      // If still no data, try sessionStorage (for main events list)
+      if (!dataToUse) {
+        storedData = sessionStorage.getItem('eventTemplate');
+        if (storedData) {
+          try {
+            dataToUse = JSON.parse(storedData);
+            console.log('📋 Found template data in sessionStorage:', dataToUse);
+          } catch (error) {
+            console.error('📋 Error parsing sessionStorage data:', error);
+          }
+        }
+      }
+    }
+    
+    if (dataToUse) {
+      console.log('📋 Pre-filling form with template data:', dataToUse);
+      
+      // Handle different data structures from localStorage vs sessionStorage
+      const title = dataToUse.title || dataToUse.name || '';
+      const description = dataToUse.description || dataToUse.caption || '';
+      const eventLocation = dataToUse.eventLocation || dataToUse.location || '';
+      
+      console.log('📋 Setting title to:', title);
+      console.log('📋 Setting description to:', description);
+      console.log('📋 Setting eventLocation to:', eventLocation);
+      
+      setTitle(title);
+      setDescription(description);
+      setEventLocation(eventLocation);
+      
+      // Handle template images if available
+      if (dataToUse.imageUrls && dataToUse.imageUrls.length > 0) {
+        console.log('📋 Template has images:', dataToUse.imageUrls.length);
+        setImagePreview(dataToUse.imageUrls);
+        console.log('📋 Set image preview from template');
+      } else if (dataToUse.Image1) {
+        // Handle single image from sessionStorage
+        console.log('📋 Template has single image:', dataToUse.Image1);
+        setImagePreview([dataToUse.Image1]);
+        console.log('📋 Set single image preview from template');
+      }
+      
+      // Clear template storage after using it
+      localStorage.removeItem('eventTemplateData');
+      sessionStorage.removeItem('eventTemplate');
+      
+      // Note: We don't pre-fill dates as the user should set new dates for the new event
+    } else {
+      // Only restore saved form data if no template data is being used
+      const savedFormData = localStorage.getItem('createEventFormData');
+      if (savedFormData) {
+        try {
+          const formData = JSON.parse(savedFormData);
+          console.log('📋 Restoring saved form data for navigation persistence:', formData);
+          
+          // Only restore if we don't already have data (to avoid overwriting template data)
+          if (!title && formData.title) setTitle(formData.title);
+          if (!description && formData.description) setDescription(formData.description);
+          if (!eventLocation && formData.eventLocation) setEventLocation(formData.eventLocation);
+          if (!imagePreview && formData.imagePreview) setImagePreview(formData.imagePreview);
+          if (!startTime && formData.startTime) setStartTime(formData.startTime);
+          if (!endTime && formData.endTime) setEndTime(formData.endTime);
+          if (!multiDates[0] && formData.multiDates) setMultiDates(formData.multiDates);
+          if (!dateRange[0] && formData.dateRange) setDateRange(formData.dateRange);
+          if (formData.dateMode) setDateMode(formData.dateMode);
+          
+          console.log('📋 Form data restored for navigation persistence');
+        } catch (error) {
+          console.error('📋 Error restoring form data:', error);
+        }
+      } else {
+        console.log('📋 No template data or saved form data available');
+      }
+    }
+  }, [templateData]);
+
+
+
+  // Save form data to localStorage whenever it changes (for navigation persistence)
+  useEffect(() => {
+    // Only save if we have actual data (not empty form)
+    if (title || description || eventLocation || imagePreview) {
+      const formData = {
+        title: title || '',
+        description: description || '',
+        eventLocation: eventLocation || '',
+        imagePreview: imagePreview || null,
+        startTime: startTime || '',
+        endTime: endTime || '',
+        multiDates: multiDates || [''],
+        dateRange: dateRange || [null, null],
+        dateMode: dateMode || 'simple'
+      };
+      
+      localStorage.setItem('createEventFormData', JSON.stringify(formData));
+      console.log('📋 Form data saved for navigation persistence');
+    }
+  }, [title, description, eventLocation, imagePreview, startTime, endTime, multiDates, dateRange, dateMode]);
+
+  // Debug: Log state changes
+  useEffect(() => {
+    console.log('📋 State updated - title:', title, 'description:', description, 'eventLocation:', eventLocation);
+  }, [title, description, eventLocation]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -259,6 +404,11 @@ function CreateCompanyEvent() {
       }
 
       await addDoc(collection(db, 'Instagram_posts'), eventData);
+      
+      // Clear saved form data after successful submission
+      localStorage.removeItem('createEventFormData');
+      console.log('📋 Form data cleared after successful submission');
+      
       navigate('/company-events');
 
     } catch (error) {
@@ -325,15 +475,46 @@ function CreateCompanyEvent() {
 
   return (
     <div style={{ background: '#3b1a5c', minHeight: '100vh', overflowY: 'auto' }}>
+
+      
       {/* Top Bar */}
       <div style={{ maxWidth: 448, margin: '0 auto', background: '#0f172a', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', padding: '16px', position: 'sticky', top: 0, zIndex: 100 }}>
-        <span onClick={() => navigate(-1)} style={{ color: '#fff', fontSize: 24, cursor: 'pointer' }}>‹</span>
+        <span onClick={() => navigate('/ticket-configuration')} style={{ color: '#fff', fontSize: 24, cursor: 'pointer' }}>‹</span>
         <h2 style={{ color: '#fff', fontWeight: 700, fontSize: 20, textAlign: 'center', flexGrow: 1 }}>Create Post</h2>
       </div>
 
       <div style={{ background: '#3b1a5c', paddingTop: '24px', paddingBottom: '100px' }}>
         <div style={{ maxWidth: 400, margin: '0 auto', padding: '0 16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
+        {/* Template Indicator */}
+        {templateData && (
+          <div style={{
+            background: 'linear-gradient(135deg, #4b1fa2 0%, #a445ff 100%)',
+            borderRadius: 12,
+            padding: '16px',
+            color: '#fff',
+            textAlign: 'center',
+            boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004'
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: '4px' }}>
+              📋 Creating from Template
+            </div>
+            <div style={{ fontSize: 14, opacity: 0.9 }}>
+              Form pre-filled from "{templateData.title || 'Previous Event'}"
+            </div>
+            {templateData.imageUrls && templateData.imageUrls.length > 0 && (
+              <div style={{ fontSize: 12, opacity: 0.8, marginTop: '4px' }}>
+                📸 {templateData.imageUrls.length} image{templateData.imageUrls.length !== 1 ? 's' : ''} copied
+              </div>
+            )}
+            {templateData.ticketType && (
+              <div style={{ fontSize: 12, opacity: 0.8, marginTop: '2px' }}>
+                🎫 Ticket type: {templateData.ticketType}
+              </div>
+            )}
+          </div>
+        )}
+        
         {/* Image Upload Section */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {/* Main Upload Button */}
@@ -485,11 +666,44 @@ function CreateCompanyEvent() {
           <input type="text" placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} style={inputBoxStyle} />
 
           <div style={{ position: 'relative' }}>
-            <button onClick={() => setIsDatePopupOpen(v => !v)} style={{...inputBoxStyle, textAlign: 'left', width: '100%', color: multiDates.filter(Boolean).length > 0 ? '#000' : '#757575' }}>
+            <button 
+              onClick={() => setIsDatePopupOpen(v => !v)} 
+              style={{
+                ...inputBoxStyle, 
+                textAlign: 'left', 
+                width: '100%', 
+                color: multiDates.filter(Boolean).length > 0 ? '#000' : '#757575',
+                // Mobile improvements
+                minHeight: '48px',
+                fontSize: '16px',
+                cursor: 'pointer',
+                // Add visual indicator for mobile
+                backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23999%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%204.9A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%204.9%2012.9l128%20127.1c2.2%202.2%205.2%203.2%208.1%203.2s5.9-1%208.1-3.2L287%2095c3.1-3.1%204.9-7.4%204.9-12.9%200-5-1.8-9.3-4.9-12.7z%22/%3E%3C/svg%3E")',
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 16px center',
+                backgroundSize: '16px 12px',
+                paddingRight: '48px',
+              }}
+            >
               {formatDateForDisplay()}
             </button>
             {isDatePopupOpen && (
-              <div ref={datePopupRef} style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', padding: '16px', borderRadius: 12, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 10, marginTop: '8px' }}>
+              <div ref={datePopupRef} style={{ 
+                position: 'absolute', 
+                top: '100%', 
+                left: 0, 
+                right: 0, 
+                background: '#fff', 
+                padding: '16px', 
+                borderRadius: 12, 
+                boxShadow: '0 4px 16px rgba(0,0,0,0.1)', 
+                zIndex: 10, 
+                marginTop: '8px',
+                // Mobile improvements
+                maxHeight: '80vh',
+                overflowY: 'auto',
+                WebkitOverflowScrolling: 'touch'
+              }}>
                 <div style={{ display: 'flex', gap: '8px', background: '#eee', padding: '4px', borderRadius: 10, marginBottom: '16px' }}>
                   <button onClick={() => setDateMode('simple')} style={dateMode === 'simple' ? activeButtonStyle : inactiveButtonStyle}>Simple</button>
                   <button onClick={() => setDateMode('range')} style={dateMode === 'range' ? activeButtonStyle : inactiveButtonStyle}>Range</button>

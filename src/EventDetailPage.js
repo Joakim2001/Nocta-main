@@ -536,15 +536,22 @@ export default function EventDetailPage() {
           
           // Process each image field - prioritize WebP, then fallback to original
           for (const { field, name, isWebP, fallback } of imageFields) {
-            // First try WebP field
-            if (field && field !== null && field.startsWith('data:image/webp;base64,')) {
-              logger.debug(`EventDetail - Processing ${name} (WebP):`, field.substring(0, 50) + '...');
-              mediaItems.push({ type: 'image', url: field });
-              urls.push(field);
-              logger.success(`EventDetail - Added ${name} (WebP) to carousel`);
+            // First try WebP field - check for both base64 and Firebase Storage URLs
+            if (field && field !== null) {
+              const isWebPDataUrl = field.startsWith('data:image/webp;base64,');
+              const isWebPStorageUrl = field.includes('webp_') && (field.includes('firebasestorage.googleapis.com') || field.includes('nocta_bucket'));
+              
+              if (isWebPDataUrl || isWebPStorageUrl) {
+                logger.debug(`EventDetail - Processing ${name} (WebP):`, field.substring(0, 50) + '...');
+                mediaItems.push({ type: 'image', url: field });
+                urls.push(field);
+                logger.success(`EventDetail - Added ${name} (WebP) to carousel`);
+                continue; // Skip fallback processing for this field
+              }
             }
+            
             // If no WebP, try fallback original image
-            else if (fallback && fallback !== null) {
+            if (fallback && fallback !== null) {
               logger.debug(`EventDetail - Processing ${name} fallback (original):`, fallback.substring(0, 50) + '...');
               const cleanedUrl = cleanImageUrl(fallback);
               if (cleanedUrl) {
@@ -568,8 +575,8 @@ export default function EventDetailPage() {
             const displayUrl = eventData.WebPDisplayurl || eventData.Displayurl_webp || eventData.Displayurl || eventData.displayurl;
             const isWebP = !!(eventData.WebPDisplayurl || eventData.Displayurl_webp);
             
-            if (isWebP && displayUrl.startsWith('data:image/webp;base64,')) {
-              // Use WebP data URL directly
+            if (isWebP && (displayUrl.startsWith('data:image/webp;base64,') || (displayUrl.includes('webp_') && (displayUrl.includes('firebasestorage.googleapis.com') || displayUrl.includes('nocta_bucket'))))) {
+              // Use WebP data URL or Firebase Storage URL directly
               mediaItems.push({ type: 'image', url: displayUrl });
               urls.push(displayUrl); // For backward compatibility
               logger.success('EventDetail - Added Displayurl (WebP) to carousel');

@@ -55,6 +55,25 @@ const proxyImageUrl = async (url) => {
   return url;
 };
 
+// Check if an image URL is likely expired (Instagram CDN URLs)
+const isLikelyExpiredUrl = (url) => {
+  if (!url) return false;
+  
+  // Instagram CDN URLs that are likely expired
+  if (url.includes('cdninstagram.com') || url.includes('fbcdn.net')) {
+    // Check if URL contains timestamp patterns that suggest expiration
+    const timestampPatterns = [
+      /\d{10,}/, // Unix timestamps
+      /\d{4}-\d{2}-\d{2}/, // Date patterns
+      /t\d{6}/, // Time patterns
+    ];
+    
+    return timestampPatterns.some(pattern => pattern.test(url));
+  }
+  
+  return false;
+};
+
 function isBar(event) {
   // Check all possible name fields including companyName for company-created events
   const names = [
@@ -203,16 +222,21 @@ function EventCard({ event, imgError, setImgError, navigate }) {
       else {
         // Check for WebP images in order of preference
         const webPFields = [
-          event.webPImage1, event.webPImage0, event.webPImage2, event.webPImage3, 
-          event.webPImage4, event.webPImage5, event.webPImage6, event.webPDisplayurl
+          event.WebPImage1, event.WebPImage0, event.WebPImage2, event.WebPImage3, 
+          event.WebPImage4, event.WebPImage5, event.WebPImage6, event.WebPDisplayurl
         ];
         
         for (const webPField of webPFields) {
-          if (webPField && webPField.startsWith('data:image/webp;base64,')) {
-            logger.debug('EventCard - Found WebP image, using directly');
-            finalImageUrl = webPField;
-            logger.success('EventCard - Using WebP image');
-            break;
+          if (webPField && webPField !== null) {
+            const isWebPDataUrl = webPField.startsWith('data:image/webp;base64,');
+            const isWebPStorageUrl = webPField.includes('webp_') && (webPField.includes('firebasestorage.googleapis.com') || webPField.includes('nocta_bucket'));
+            
+            if (isWebPDataUrl || isWebPStorageUrl) {
+              logger.debug('EventCard - Found WebP image, using directly');
+              finalImageUrl = webPField;
+              logger.success('EventCard - Using WebP image');
+              break;
+            }
           }
         }
         
@@ -226,13 +250,25 @@ function EventCard({ event, imgError, setImgError, navigate }) {
           for (const originalField of originalFields) {
             if (originalField && originalField !== null) {
               logger.debug('EventCard - Processing original image:', originalField);
+              
+              // Skip likely expired Instagram URLs to avoid proxy failures
+              if (isLikelyExpiredUrl(originalField)) {
+                logger.debug('EventCard - Skipping likely expired URL:', originalField);
+                continue;
+              }
+              
               const cleanedUrl = cleanImageUrl(originalField);
               if (cleanedUrl) {
-                const proxiedUrl = await proxyImageUrl(cleanedUrl);
-                if (proxiedUrl) {
-                  finalImageUrl = proxiedUrl;
-                  logger.success('EventCard - Using proxied original image');
-                  break;
+                try {
+                  const proxiedUrl = await proxyImageUrl(cleanedUrl);
+                  if (proxiedUrl) {
+                    finalImageUrl = proxiedUrl;
+                    logger.success('EventCard - Using proxied original image');
+                    break;
+                  }
+                } catch (error) {
+                  logger.error('EventCard - Proxy failed for URL:', cleanedUrl, error);
+                  continue; // Try next image
                 }
               }
             }

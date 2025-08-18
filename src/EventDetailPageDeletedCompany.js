@@ -18,11 +18,29 @@ export default function EventDetailPageDeletedCompany() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [touchStart, setTouchStart] = useState(null);
   const [touchEnd, setTouchEnd] = useState(null);
+  
+  // Debug logging
+  console.log('🔍 EventDetailPageDeletedCompany - Component loaded');
+  console.log('🔍 EventDetailPageDeletedCompany - ID from params:', id);
+  console.log('🔍 EventDetailPageDeletedCompany - Current URL:', window.location.href);
+  console.log('🔍 EventDetailPageDeletedCompany - Event state:', event);
+  console.log('🔍 EventDetailPageDeletedCompany - Loading state:', loading);
 
   useEffect(() => {
     async function fetchEvent() {
       try {
         console.log('🔍 Fetching deleted event with ID:', id);
+        
+        // Check if user is authenticated
+        const auth = getAuth();
+        const user = auth.currentUser;
+        console.log('🔍 Current user:', user);
+        
+        if (!user) {
+          console.log('🔍 No user authenticated, redirecting to login');
+          navigate('/company-login');
+          return;
+        }
         
         // First try to find by document ID (in case it was stored with original ID)
         const docRef = doc(db, "deleted_posts", id);
@@ -310,20 +328,69 @@ export default function EventDetailPageDeletedCompany() {
   };
 
   const handleUseTemplate = () => {
-    // Navigate to create event page with template data
+    try {
+      console.log('📋 handleUseTemplate function started');
+      
+      if (!event) {
+        console.log('📋 No event data available');
+        return;
+      }
+      
+      console.log('📋 handleUseTemplate called with event:', event);
+      console.log('📋 Event fields available:', {
+        title: event.title,
+        caption: event.caption,
+        description: event.description,
+        location: event.location,
+        venue: event.venue,
+        ticketType: event.ticketType,
+        ticketConfiguration: event.ticketConfiguration
+      });
+    
+    // Prepare template data from the deleted event
     const templateData = {
-      title: event.title,
-      description: event.description,
-      venue: event.venue,
-      location: event.location,
-      username: event.username,
-      fullname: event.fullname,
-      // Don't copy dates - user will set new dates
+      title: event.title || event.caption || '',
+      description: event.description || event.caption || '',
+      eventLocation: event.location || event.venue || '',
+      // Copy all image fields
+      imageUrls: imageUrls || [],
+      // Copy ticket configuration if available
+      ticketType: event.ticketType || 'No ticket',
+      ticketConfiguration: event.ticketConfiguration || null,
+      // Copy any other relevant fields
+      originalEventId: event.id,
+      isFromTemplate: true,
+      // Copy additional event details
+      eventDetails: {
+        hasImages: imageUrls && imageUrls.length > 0,
+        imageCount: imageUrls ? imageUrls.length : 0,
+        originalEventTitle: event.title || event.caption || 'Previous Event'
+      }
     };
     
-    // Store template data in sessionStorage for the create page to use
-    sessionStorage.setItem('eventTemplate', JSON.stringify(templateData));
-    navigate('/company-create-event');
+    console.log('📋 Using event as template:', templateData);
+    
+    // Store in localStorage as backup
+    localStorage.setItem('eventTemplateData', JSON.stringify(templateData));
+    console.log('📋 Stored template data in localStorage');
+    
+    // Navigate to create event page with template data
+    const navigationState = { 
+      templateData,
+      ticketOption: event.ticketType || 'No ticket',
+      ticketConfiguration: event.ticketConfiguration || null
+    };
+    
+    console.log('📋 Navigating with state:', navigationState);
+    
+    navigate('/company-create-event/new', { 
+      state: navigationState
+    });
+    
+    console.log('📋 Navigation called');
+    } catch (error) {
+      console.error('📋 ERROR in handleUseTemplate:', error);
+    }
   };
 
   return (
@@ -551,6 +618,45 @@ export default function EventDetailPageDeletedCompany() {
             >
                 {republishing ? 'Republishing...' : '🔄 Republish'}
             </button>
+            
+            <button 
+                onClick={() => {
+                    try {
+                        console.log('📋 Use as Template button clicked!');
+                        console.log('📋 Current event object:', event);
+                        console.log('📋 Event ID:', event?.id);
+                        console.log('📋 Event title:', event?.title);
+                        console.log('📋 Event caption:', event?.caption);
+                        console.log('📋 Image URLs available:', imageUrls);
+                        
+                        if (!event) {
+                            console.error('📋 ERROR: Event object is null/undefined!');
+                            return;
+                        }
+                        
+                        console.log('📋 About to call handleUseTemplate...');
+                        handleUseTemplate();
+                        console.log('📋 handleUseTemplate called successfully');
+                    } catch (error) {
+                        console.error('📋 ERROR in button click handler:', error);
+                    }
+                }}
+                style={{
+                    flex: 1,
+                    background: 'linear-gradient(90deg, #3E29F0 0%, #a445ff 100%)',
+                    color: '#fff',
+                    padding: '14px',
+                    borderRadius: 999,
+                    border: 'none',
+                    fontWeight: 600,
+                    fontSize: '1rem',
+                    boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004',
+                    cursor: 'pointer'
+                }}
+            >
+                📋 Use as Template
+            </button>
+            
             {url && (
               <a href={url} target="_blank" rel="noopener noreferrer" style={{
                 flex: 1,

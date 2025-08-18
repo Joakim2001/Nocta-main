@@ -172,11 +172,14 @@ function EventCard({ event, navigate, showPreviousEvents }) {
           const cleanedUrl = cleanImageUrl(imageField);
           if (cleanedUrl) {
             try {
-              // For WebP data URLs, use directly (no proxy needed)
-              if (cleanedUrl.startsWith('data:image/webp;base64,')) {
-                console.log('🏢 EventCard - Using WebP data URL directly:', cleanedUrl.substring(0, 50) + '...');
+              // For WebP data URLs or Firebase Storage WebP URLs, use directly (no proxy needed)
+              const isWebPDataUrl = cleanedUrl.startsWith('data:image/webp;base64,');
+              const isWebPStorageUrl = cleanedUrl.includes('webp_') && (cleanedUrl.includes('firebasestorage.googleapis.com') || cleanedUrl.includes('nocta_bucket'));
+              
+              if (isWebPDataUrl || isWebPStorageUrl) {
+                console.log('🏢 EventCard - Using WebP URL directly:', cleanedUrl.substring(0, 50) + '...');
                 finalImageUrl = cleanedUrl;
-                console.log('🏢 EventCard - Using WebP data URL:', imageField);
+                console.log('🏢 EventCard - Using WebP URL:', imageField);
                 break;
               }
               
