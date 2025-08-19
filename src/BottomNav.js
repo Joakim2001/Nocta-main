@@ -11,6 +11,7 @@ function BottomNav({ unreadCount }) {
     if (location.pathname.startsWith('/event/')) {
       if (from === 'home' && path === '/home') return true;
       if (from === 'bars' && path === '/bars') return true;
+      if (from === 'map' && path === '/map') return true;
     }
     return location.pathname.startsWith(path);
   };
@@ -25,19 +26,17 @@ function BottomNav({ unreadCount }) {
             onClick={() => navigate('/home')}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
-            <span className="text-xs">Clubs</span>
+            <span className="text-xs">Home</span>
           </button>
-          {/* Bars (Cocktail glass icon) */}
+          {/* Map (Map icon) */}
           <button
-            className={`flex flex-col items-center gap-3 p-2 ${isActive('/bars') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
-            onClick={() => navigate('/bars')}
+            className={`flex flex-col items-center gap-3 p-2 ${isActive('/map') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+            onClick={() => navigate('/map')}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M2 3h20l-10 13L2 3z" />
-              <path d="M12 16v5" />
-              <path d="M8 21h8" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7" />
             </svg>
-            <span className="text-xs">Bars</span>
+            <span className="text-xs">Map</span>
           </button>
           {/* Chats (Chat bubble icon) */}
           <button

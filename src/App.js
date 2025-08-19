@@ -5,9 +5,9 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, on
 import { db } from './firebase';
 import { doc, getDoc, setDoc, query, where, getDocs, collection } from 'firebase/firestore';
 import EventsList from "./EventsList";
-import EventsListWithNav from "./EventsListWithNav";
 import EventDetailPage from "./EventDetailPage";
 import BarsList from "./BarsList";
+import MapPage from "./MapPage";
 import FrontPage from './FrontPage';
 import UserTypeSelect from './UserTypeSelect';
 
@@ -1198,19 +1198,20 @@ function App() {
                   console.log('🔍 App.js: /home route check - profileLoaded:', profileLoaded, 'profileComplete:', profileComplete);
                   // Allow guest browsing - if no user, show the page without authentication
                   if (!user) {
-                    return <EventsListWithNav />;
+                    return <EventsList />;
                   }
                   
                   // Check if user chose to sign up later
                   const signUpLater = localStorage.getItem('signUpLater') === 'true';
-                  if (signUpLater) {
-                    return <EventsListWithNav />;
-                  }
+                        if (signUpLater) {
+        return <EventsList />;
+      }
                   
-                  return profileLoaded && profileComplete ? <EventsListWithNav /> : <Navigate to={userType === 'company' ? "/company-verification-setup" : "/profile-setup"} replace />;
+                  return profileLoaded && profileComplete ? <EventsList /> : <Navigate to={userType === 'company' ? "/company-verification-setup" : "/profile-setup"} replace />;
                 })()
               } />
               <Route path="/bars" element={<BarsList />} />
+              <Route path="/map" element={<MapPage />} />
               <Route path="/event/:id" element={<EventDetailPage />} />
               <Route path="/company-events" element={<EventsListCompany />} />
               <Route path="/company-deleted-event/:id" element={<EventDetailPageDeletedCompany />} />
