@@ -54,6 +54,16 @@ function BottomNav({ unreadCount }) {
             )}
             <span className="text-xs">Chats</span>
           </button>
+          {/* Liked */}
+          <button
+            className={`flex flex-col items-center gap-1 p-2 ${isActive('/profile') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+            onClick={() => navigate('/profile')}
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+            <span className="text-xs">Liked</span>
+          </button>
           {/* Tickets */}
           <button
             className={`flex flex-col items-center gap-1 p-2 ${isActive('/my-tickets') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
@@ -61,14 +71,6 @@ function BottomNav({ unreadCount }) {
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>
             <span className="text-xs">Tickets</span>
-          </button>
-          {/* Profile */}
-          <button
-            className={`flex flex-col items-center gap-1 p-2 ${isActive('/profile') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
-            onClick={() => navigate('/profile')}
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-            <span className="text-xs">Profile</span>
           </button>
         </div>
       </div>

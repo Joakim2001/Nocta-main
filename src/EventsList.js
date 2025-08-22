@@ -4,11 +4,13 @@ import { collection, onSnapshot, query, getDocs, orderBy, limit, where, doc, get
 import { useNavigate } from "react-router-dom";
 import { CLUB_FESTIVAL_NAMES, BAR_NAMES } from './club_festival_names';
 import BottomNav from './BottomNav';
+import BottomNavCompany from './BottomNavCompany';
 import { EventsHeader } from './EventsHeader';
 import { checkAndArchiveEvent } from './autoArchiveUtils';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { logger } from './utils/logger';
 import { filterOutDeletedEvents } from './utils/eventFilters';
+import { getAuth } from 'firebase/auth';
 
 // Add CSS for hiding scrollbars
 const scrollbarStyles = `
@@ -157,13 +159,13 @@ const getWebPImageUrl = (event) => {
   
   // Priority 3: Check for original images
   const originalFields = [
-    event.Image1, event.Image0, event.Image2, event.Image3,
+    event.Image1, event.Image0, event.Image2, event.Image3, 
     event.Image4, event.Image5, event.Image6, event.Displayurl
   ];
   
   for (const originalField of originalFields) {
     if (originalField && originalField !== null && originalField.trim() !== '') {
-      return originalField;
+        return originalField;
     }
   }
   
@@ -411,10 +413,10 @@ function EventCard({ event, imgError, setImgError, navigate }) {
             const isWebPStorageUrl = webPField.includes('webp_') && (webPField.includes('firebasestorage.googleapis.com') || webPField.includes('nocta_bucket'));
             
             if (isWebPDataUrl || isWebPStorageUrl) {
-              logger.debug('EventCard - Found WebP image, using directly');
-              finalImageUrl = webPField;
-              logger.success('EventCard - Using WebP image');
-              break;
+            logger.debug('EventCard - Found WebP image, using directly');
+            finalImageUrl = webPField;
+            logger.success('EventCard - Using WebP image');
+            break;
             }
           }
         }
@@ -439,11 +441,11 @@ function EventCard({ event, imgError, setImgError, navigate }) {
               const cleanedUrl = cleanImageUrl(originalField);
               if (cleanedUrl) {
                 try {
-                  const proxiedUrl = await proxyImageUrl(cleanedUrl);
-                  if (proxiedUrl) {
-                    finalImageUrl = proxiedUrl;
-                    logger.success('EventCard - Using proxied original image');
-                    break;
+                const proxiedUrl = await proxyImageUrl(cleanedUrl);
+                if (proxiedUrl) {
+                  finalImageUrl = proxiedUrl;
+                  logger.success('EventCard - Using proxied original image');
+                  break;
                   }
                 } catch (error) {
                   logger.error('EventCard - Proxy failed for URL:', cleanedUrl, error);
@@ -672,8 +674,9 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
   const [allEvents, setAllEvents] = useState([]); // Store all events separately
   const [imgError, setImgError] = useState({});
   const [loading, setLoading] = useState(true);
-  const [showThreeDotsMenu, setShowThreeDotsMenu] = useState(false);
-  const [selectedFilter, setSelectedFilter] = useState('all');
+  const [userType, setUserType] = useState(null);
+
+  const [selectedFilter, setSelectedFilter] = useState('clubs');
   const navigate = useNavigate();
 
   // Add CSS to document head for hiding scrollbars
@@ -687,19 +690,40 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
     };
   }, []);
 
-  // Close three dots menu when clicking outside
+  // Determine user type on component mount
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (showThreeDotsMenu && !event.target.closest('[data-three-dots-menu]')) {
-        setShowThreeDotsMenu(false);
+    const determineUserType = async () => {
+      try {
+        const auth = getAuth();
+        const user = auth.currentUser;
+        
+        if (user) {
+          // Check if user exists in company profiles
+          const companyRef = doc(db, 'Club_Bar_Festival_profiles', user.uid);
+          const companySnap = await getDoc(companyRef);
+          
+          if (companySnap.exists()) {
+            setUserType('company');
+          } else {
+            // Check if user exists in regular profiles
+            const profileRef = doc(db, 'profiles', user.uid);
+            const profileSnap = await getDoc(profileRef);
+            
+            if (profileSnap.exists()) {
+              setUserType('private');
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error determining user type:', error);
+        setUserType('private'); // Default to private
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showThreeDotsMenu]);
+    determineUserType();
+  }, []);
+
+
 
   // Function to filter events by type (clubs, bars, or all)
   const applyTypeFilter = (eventsList, filterType) => {
@@ -740,18 +764,18 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
     async function fetchEvents() {
       setLoading(true);
       try {
-        const now = new Date();
-        // Fetch all events from Instagram_posts (includes both scraped and company-created)
-        const snap = await getDocs(query(collection(db, "Instagram_posts")));
-        let allEvents = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const now = new Date();
+      // Fetch all events from Instagram_posts (includes both scraped and company-created)
+      const snap = await getDocs(query(collection(db, "Instagram_posts")));
+      let allEvents = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        // Filter out events that companies have deleted
-        allEvents = await filterOutDeletedEvents(allEvents);
+      // Filter out events that companies have deleted
+      allEvents = await filterOutDeletedEvents(allEvents);
 
-        console.log('📊 EventsList - Total events fetched:', allEvents.length);
-        console.log('📊 EventsList - Company-created events:', allEvents.filter(e => e.source === 'company-created').length);
-        console.log('📊 EventsList - Instagram-scraped events:', allEvents.filter(e => e.source !== 'company-created').length);
-        
+      console.log('📊 EventsList - Total events fetched:', allEvents.length);
+      console.log('📊 EventsList - Company-created events:', allEvents.filter(e => e.source === 'company-created').length);
+      console.log('📊 EventsList - Instagram-scraped events:', allEvents.filter(e => e.source !== 'company-created').length);
+
         // Debug: Log some sample events to see their structure
         if (allEvents.length > 0) {
           console.log('🔍 Sample event structure:', {
@@ -768,22 +792,22 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
         }
 
         // Filter for current/future events (more inclusive)
-        allEvents = allEvents
-          .filter(event => {
-            const start = getEventDate(event);
-            const end = getEventDateEnd ? getEventDateEnd(event) : null;
-            
+      allEvents = allEvents
+        .filter(event => {
+          const start = getEventDate(event);
+          const end = getEventDateEnd ? getEventDateEnd(event) : null;
+          
             // If no start date, still show the event (don't exclude it)
             if (!start) {
               console.log('⚠️ Event with no date, showing anyway:', event.id, event.title);
               return true;
             }
             
-            // Show if event is ongoing or in the future
-            if (end) {
-              return now <= end;
-            }
-            return start >= now;
+          // Show if event is ongoing or in the future
+          if (end) {
+            return now <= end;
+          }
+          return start >= now;
           });
         
         // Log how many events pass the date filter
@@ -795,32 +819,32 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
         // Log final count
         console.log('🎯 EventsList - Final events count:', allEvents.length);
 
-        // Search filter function
-        const applySearchFilter = (eventsList) => {
-          if (!searchQuery || searchQuery.trim() === '') {
-            return eventsList;
-          }
+      // Search filter function
+      const applySearchFilter = (eventsList) => {
+        if (!searchQuery || searchQuery.trim() === '') {
+          return eventsList;
+        }
+        
+        const query = searchQuery.toLowerCase().trim();
+        return eventsList.filter(event => {
+          // Search in event title/caption
+          const title = (event.title || event.caption || '').toLowerCase();
+          if (title.includes(query)) return true;
           
-          const query = searchQuery.toLowerCase().trim();
-          return eventsList.filter(event => {
-            // Search in event title/caption
-            const title = (event.title || event.caption || '').toLowerCase();
-            if (title.includes(query)) return true;
-            
-            // Search in company name/username/fullname
-            const companyName = (event.companyName || '').toLowerCase();
-            const username = (event.username || '').toLowerCase();
-            const fullname = (event.fullname || '').toLowerCase();
-            const venue = (event.venue || '').toLowerCase();
-            const club = (event.club || '').toLowerCase();
-            
-            return companyName.includes(query) || 
-                   username.includes(query) || 
-                   fullname.includes(query) ||
-                   venue.includes(query) ||
-                   club.includes(query);
-          });
-        };
+          // Search in company name/username/fullname
+          const companyName = (event.companyName || '').toLowerCase();
+          const username = (event.username || '').toLowerCase();
+          const fullname = (event.fullname || '').toLowerCase();
+          const venue = (event.venue || '').toLowerCase();
+          const club = (event.club || '').toLowerCase();
+          
+          return companyName.includes(query) || 
+                 username.includes(query) || 
+                 fullname.includes(query) ||
+                 venue.includes(query) ||
+                 club.includes(query);
+        });
+      };
 
         // Apply search filter to all events
         const filteredEvents = applySearchFilter(allEvents);
@@ -881,179 +905,107 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
         paddingBottom: '80px'
       }}>
 
-        {/* Main Content */}
-        <div style={{ 
-          padding: '18px', 
-          maxWidth: '448px', 
-          margin: '0 auto',
-          background: '#2a0845',
-          minHeight: 'calc(100vh - 200px)',
-          borderRadius: '24px 24px 0 0',
-          marginTop: '0'
-        }}>
+                 {/* Main Content */}
+         <div style={{ 
+           padding: '18px', 
+           maxWidth: '448px', 
+           margin: '0 auto',
+           background: '#2a0845',
+           minHeight: 'calc(100vh - 200px)',
+           borderRadius: '24px 24px 0 0',
+           marginTop: '0'
+         }}>
 
-          {/* Top Navigation Bar (Header + Search) */}
-          <div style={{ 
-            background: '#111827',
-            padding: '20px',
-            margin: '-18px -18px 24px -18px',
-            borderRadius: '0'
-          }}>
-            {/* Header Section */}
+            {/* Top Navigation Bar (Header + Search) */}
             <div style={{ 
+            background: '#111827',
+              padding: '20px',
+              margin: '-18px -18px 24px -18px',
+              borderRadius: '0'
+            }}>
+              {/* Header Section */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between', 
+                marginBottom: 24
+              }}>
+                {/* Location Button */}
+                            <div style={{ 
               display: 'flex', 
               alignItems: 'center', 
-              justifyContent: 'space-between', 
-              marginBottom: 24
+                  background: '#2a0845', 
+              color: '#fff', 
+              fontWeight: 600, 
+              fontSize: 14, 
+              borderRadius: 24, 
+              padding: '12px 20px', 
+                  boxShadow: '0 2px 12px rgba(42, 8, 69, 0.3)', 
+              border: '2px solid #fff'
             }}>
-                             {/* Location Button */}
-               <div style={{ 
-                 display: 'flex', 
-                 alignItems: 'center', 
-                 background: '#2a0845', 
-                 color: '#fff', 
-                 fontWeight: 600, 
-                 fontSize: 14, 
-                 borderRadius: 24, 
-                 padding: '12px 20px', 
-                 boxShadow: '0 2px 12px rgba(42, 8, 69, 0.3)', 
-                 border: '2px solid #fff'
-               }}>
-                <svg style={{ width: 16, height: 16, marginRight: 8 }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="10" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 700 }}>København, Denmark</div>
-                </div>
-              </div>
-              
-              {/* Right Action Buttons */}
-              <div style={{ display: 'flex', gap: 12 }}>
-                {/* Three Dots Menu Button */}
-                <div style={{ position: 'relative' }} data-three-dots-menu>
-                                     <div 
-                     onClick={() => setShowThreeDotsMenu(!showThreeDotsMenu)}
-                     style={{ 
-                       width: 40, 
-                       height: 40, 
-                       background: '#2a0845', 
-                       borderRadius: '50%', 
-                       display: 'flex', 
-                       alignItems: 'center', 
-                       justifyContent: 'center',
-                       cursor: 'pointer',
-                       boxShadow: '0 2px 12px rgba(42, 8, 69, 0.3)',
-                       border: '2px solid #fff'
-                     }}
-                   >
-                    <svg style={{ width: 20, height: 20, color: '#fff' }} fill="currentColor" viewBox="0 0 24 24">
-                      <circle cx="4" cy="12" r="2" />
-                      <circle cx="12" cy="12" r="2" />
-                      <circle cx="20" cy="12" r="2" />
-                    </svg>
-                  </div>
-                  
-                  {/* Dropdown Menu */}
-                  {showThreeDotsMenu && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      right: 0,
-                      marginTop: 8,
-                      background: '#1f2937',
-                      borderRadius: 12,
-                      padding: '8px 0',
-                      boxShadow: '0 10px 25px rgba(0, 0, 0, 0.5)',
-                      border: '1px solid #374151',
-                      zIndex: 1000,
-                      minWidth: 120
-                    }}>
-                                             <div 
-                         onClick={() => {
-                           setSelectedFilter('all');
-                           setShowThreeDotsMenu(false);
-                         }}
-                         style={{
-                           padding: '12px 16px',
-                           color: selectedFilter === 'all' ? '#F941F9' : '#fff',
-                           fontSize: 14,
-                           fontWeight: 600,
-                           cursor: 'pointer',
-                           borderBottom: '1px solid #374151',
-                           backgroundColor: selectedFilter === 'all' ? 'rgba(249, 65, 249, 0.1)' : 'transparent'
-                         }}
-                       >
-                         All ({allEvents.length})
-                       </div>
-                       <div 
-                         onClick={() => {
-                           setSelectedFilter('clubs');
-                           setShowThreeDotsMenu(false);
-                         }}
-                         style={{
-                           padding: '12px 16px',
-                           color: selectedFilter === 'clubs' ? '#F941F9' : '#fff',
-                           fontSize: 14,
-                           fontWeight: 600,
-                           cursor: 'pointer',
-                           borderBottom: '1px solid #374151',
-                           backgroundColor: selectedFilter === 'clubs' ? 'rgba(249, 65, 249, 0.1)' : 'transparent'
-                         }}
-                       >
-                         Clubs ({applyTypeFilter(allEvents, 'clubs').length})
-                       </div>
-                       <div 
-                         onClick={() => {
-                           setSelectedFilter('bars');
-                           setShowThreeDotsMenu(false);
-                         }}
-                         style={{
-                           padding: '12px 16px',
-                           color: selectedFilter === 'bars' ? '#F941F9' : '#fff',
-                           fontSize: 14,
-                           fontWeight: 600,
-                           cursor: 'pointer',
-                           backgroundColor: selectedFilter === 'bars' ? 'rgba(249, 65, 249, 0.1)' : 'transparent'
-                         }}
-                       >
-                         Bars ({applyTypeFilter(allEvents, 'bars').length})
-                       </div>
-                    </div>
-                  )}
-                </div>
-                
-                                 {/* Bell Notification Button */}
-                 <div style={{ 
-                   width: 40, 
-                   height: 40, 
-                   background: '#2a0845', 
-                   borderRadius: '50%', 
-                   display: 'flex', 
-                   alignItems: 'center', 
-                   justifyContent: 'center',
-                   cursor: 'pointer',
-                   boxShadow: '0 2px 12px rgba(42, 8, 69, 0.3)',
-                   border: '2px solid #fff'
-                 }}>
-                  <svg style={{ width: 20, height: 20, color: '#fff' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                  </svg>
-                </div>
+              <svg style={{ width: 16, height: 16, marginRight: 8 }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>København, Denmark</div>
               </div>
             </div>
+                
+                {/* Right Action Buttons */}
+                <div style={{ display: 'flex', gap: 12 }}>
+                                   {/* Bell Notification Button */}
+                   <div style={{ 
+                  width: 40, 
+                  height: 40, 
+                     background: '#2a0845', 
+                  borderRadius: '50%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                     boxShadow: '0 2px 12px rgba(42, 8, 69, 0.3)',
+                  border: '2px solid #fff'
+                   }}>
+                    <svg style={{ width: 20, height: 20, color: '#fff' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+              </div>
+              
+                                     {/* Profile Button */}
+                   <div 
+                     onClick={() => navigate(userType === 'company' ? '/company-profile' : '/profile')}
+                    style={{
+                    width: 40, 
+                    height: 40, 
+                       background: '#2a0845', 
+                    borderRadius: '50%', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                       boxShadow: '0 2px 12px rgba(42, 8, 69, 0.3)',
+                    border: '2px solid #fff'
+                     }}
+                   >
+                    <svg style={{ width: 20, height: 20, color: '#fff' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
 
-            {/* Search Section */}
-            <div style={{ 
-              marginBottom: 0
-            }}>
+              {/* Search Section */}
+              <div style={{ 
+                marginBottom: 4
+              }}>
               {/* Search Bar */}
               <div style={{ 
                 position: 'relative',
                 background: '#fff',
-                borderRadius: 20,
-                padding: '8px 16px',
+                 borderRadius: 20,
+                 padding: '8px 16px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 12
@@ -1081,61 +1033,118 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
             </div>
           </div>
 
-          {/* Trending Section */}
-          <div style={{ marginBottom: 32 }}>
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between', 
-              marginBottom: 16 
-            }}>
-              <h2 style={{ 
-                color: '#F2F2F2', 
-                fontSize: 24, 
-                fontWeight: 600, 
-                margin: 0 
+                                                           {/* Filter Segmented Control - Moved outside navigation bar */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                width: '100%',
+                marginBottom: 32
               }}>
-                Trending
-              </h2>
-              <span style={{ 
+               <div style={{
+                 display: 'flex',
+                 background: '#1f2937',
+                 borderRadius: 24,
+                 padding: 3,
+                 border: '2px solid #E9D5FF',
+                 position: 'relative',
+                 width: '80%',
+                 marginTop: -12
+               }}>
+                         {/* Clubs Option */}
+             <div 
+               onClick={() => setSelectedFilter('clubs')}
+               style={{
+                 padding: '8px 2px',
+                 borderRadius: 20,
+                 cursor: 'pointer',
+                 background: selectedFilter === 'clubs' ? '#F941F9' : 'transparent',
+                 color: selectedFilter === 'clubs' ? '#fff' : '#E9D5FF',
+                 fontSize: 14,
+                 fontWeight: 600,
+                 transition: 'all 0.2s ease',
+                 flex: 1,
+                 textAlign: 'center'
+               }}
+             >
+               Clubs
+             </div>
+             
+             {/* Bars Option */}
+             <div 
+               onClick={() => setSelectedFilter('bars')}
+               style={{
+                 padding: '8px 2px',
+                 borderRadius: 20,
+                 cursor: 'pointer',
+                 background: selectedFilter === 'bars' ? '#F941F9' : 'transparent',
+                 color: selectedFilter === 'bars' ? '#fff' : '#E9D5FF',
+                 fontSize: 14,
+                 fontWeight: 600,
+                 transition: 'all 0.2s ease',
+                 flex: 1,
+                 textAlign: 'center'
+               }}
+             >
+               Bars
+             </div>
+               </div>
+             </div>
+
+          {/* Trending Section - START */}
+           <div style={{ marginBottom: 32 }}>
+             <div style={{ 
+               display: 'flex', 
+               alignItems: 'center', 
+               justifyContent: 'space-between', 
+               marginBottom: 16 
+             }}>
+               <h2 style={{ 
+                 color: '#F2F2F2', 
+                 fontSize: 24, 
+                 fontWeight: 600, 
+                 margin: 0 
+               }}>
+                 Trending
+               </h2>
+               <span style={{ 
                 color: '#7B1FA2', 
-                fontSize: 14, 
-                cursor: 'pointer',
-                textDecoration: 'underline'
+                 fontSize: 14, 
+                 cursor: 'pointer',
+                 textDecoration: 'underline'
+               }}>
+                 See all
+               </span>
+             </div>
+             
+                           <div className="hide-scrollbar" style={{ 
+                display: 'flex', 
+                gap: 16, 
+                overflowX: 'auto', 
+                paddingBottom: 8
               }}>
-                See all
-              </span>
-            </div>
-            
-            <div className="hide-scrollbar" style={{ 
-              display: 'flex', 
-              gap: 16, 
-              overflowX: 'auto', 
-              paddingBottom: 8
-            }}>
-              {events
-                .sort((a, b) => {
-                  const viewsA = a.viewscount || 0;
-                  const viewsB = b.viewscount || 0;
-                  const likesA = a.likescount || 0;
-                  const likesB = b.likescount || 0;
-                  
-                  // First compare by views
-                  if (viewsA !== viewsB) return viewsB - viewsA; // Higher views first
-                  
-                  // If same views, compare by likes
-                  return likesB - likesA; // Higher likes first
-                })
-                .slice(0, 3)
-                .map((event, index) => (
+                {events
+        .sort((a, b) => {
+                    const viewsA = a.viewscount || 0;
+                    const viewsB = b.viewscount || 0;
+                    const likesA = a.likescount || 0;
+                    const likesB = b.likescount || 0;
+                    
+                    // First compare by views
+                    if (viewsA !== viewsB) return viewsB - viewsA; // Higher views first
+                    
+                    // If same views, compare by likes
+                    return likesB - likesA; // Higher likes first
+                  })
+                  .slice(0, 3)
+                  .map((event, index) => (
                   <div 
-                    key={`trending-${event.id}`} 
+                                        key={`trending-${event.id}-unique`}
                     data-section="trending"
                     style={{ 
-                      minWidth: 280,
-                      background: '#1f2937', 
+                   minWidth: 280,
+                   background: '#1f2937', 
                       borderRadius: 24, 
-                      overflow: 'hidden',
+                   overflow: 'hidden',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.8), 0 1px 4px rgba(0,0,0,0.6)',
                       cursor: 'pointer'
                     }}
@@ -1143,17 +1152,17 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                   >
                     <div style={{ position: 'relative' }}>
                       <MediaDisplay event={event} height="160px" showVideoIndicator={false} />
-                      <div style={{ 
-                        position: 'absolute', 
-                        top: 12, 
-                        right: 12, 
-                        background: '#F941F9', 
-                        color: '#fff', 
-                        padding: '6px 12px', 
-                        borderRadius: 12, 
-                        fontSize: 12, 
-                        fontWeight: 600 
-                      }}>
+                     <div style={{ 
+                       position: 'absolute', 
+                       top: 12, 
+                       right: 12, 
+                       background: '#F941F9', 
+                       color: '#fff', 
+                       padding: '6px 12px', 
+                       borderRadius: 12, 
+                       fontSize: 12, 
+                       fontWeight: 600 
+                     }}>
                         {(() => {
                           const startDate = getEventDate(event);
                           const endDate = getEventDateEnd ? getEventDateEnd(event) : null;
@@ -1163,114 +1172,115 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                           }
                           return startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
                         })()}
-                      </div>
-                      {/* Unified gradient background for title and company name */}
-                      <div style={{ 
-                        position: 'absolute', 
-                        bottom: 0, 
-                        left: 0, 
-                        right: 0, 
-                        background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.6))',
-                        padding: '32px 12px 12px 12px',
-                        color: '#fff'
-                      }}>
-                        {/* Event title */}
-                        <div style={{ 
-                          fontSize: 14,
-                          fontWeight: 700,
-                          textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
-                          lineHeight: 1.2,
-                          marginBottom: 8
-                        }}>
-                          {event.title || event.caption || 'Event Title'}
-                        </div>
-                        {/* Company name and likes count */}
-                        <div style={{ 
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center'
-                        }}>
-                          <div style={{ 
-                            fontSize: 12,
-                            fontWeight: 600,
-                            textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
-                            color: '#87CEEB'
-                          }}>
-                            {event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}
-                          </div>
-                          <div style={{ 
-                            fontSize: 11,
-                            fontWeight: 600,
-                            color: '#fff',
+                     </div>
+                     {/* Unified gradient background for title and company name */}
+                     <div style={{ 
+                       position: 'absolute', 
+                       bottom: 0, 
+                       left: 0, 
+                       right: 0, 
+                       background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.6))',
+                       padding: '32px 12px 12px 12px',
+                       color: '#fff'
+                     }}>
+                        {/* Event title - TRENDING SECTION */}
+                       <div style={{ 
+                         fontSize: 14,
+                         fontWeight: 700,
+                          textShadow: '0 2px 8px rgba(0, 0, 0, 0.9), 0 1px 4px rgba(0, 0, 0, 0.8)',
+                         lineHeight: 1.2,
+                         marginBottom: 8
+                       }}>
+                         {event.title || event.caption || 'Event Title'}
+                       </div>
+                        {/* Company name and likes count - TRENDING SECTION */}
+                       <div style={{ 
+                         display: 'flex',
+                         justifyContent: 'space-between',
+                         alignItems: 'center'
+                       }}>
+                         <div style={{ 
+                           fontSize: 12,
+                           fontWeight: 600,
+                            textShadow: '0 2px 8px rgba(0, 0, 0, 0.9), 0 1px 4px rgba(0, 0, 0, 0.8)',
+                           color: '#87CEEB'
+                         }}>
+                           {event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}
+                         </div>
+                         <div style={{ 
+                           fontSize: 11,
+                           fontWeight: 600,
+                           color: '#fff',
                             background: '#10B981',
-                            borderRadius: 12,
-                            padding: '4px 8px',
+                           borderRadius: 12,
+                           padding: '4px 8px',
                             boxShadow: '0 2px 8px rgba(16, 185, 129, 0.08)'
-                          }}>
-                            {event.likescount > 0 ? `${event.likescount} likes` : 'New Event'}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
+                         }}>
+                           {event.likescount > 0 ? `${event.likescount} likes` : 'New Event'}
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+               ))}
+             </div>
+           </div>
+          {/* Trending Section - END */}
 
-          {/* Favourites Section */}
-          <div style={{ marginBottom: 32 }}>
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between', 
-              marginBottom: 16 
-            }}>
-              <h2 style={{ 
-                color: '#F2F2F2', 
-                fontSize: 24, 
-                fontWeight: 600, 
-                margin: 0 
-              }}>
-                Favourites
-              </h2>
-              <span style={{ 
+           {/* Favourites Section */}
+           <div style={{ marginBottom: 32 }}>
+             <div style={{ 
+               display: 'flex', 
+               alignItems: 'center', 
+               justifyContent: 'space-between', 
+               marginBottom: 16 
+             }}>
+               <h2 style={{ 
+                 color: '#F2F2F2', 
+                 fontSize: 24, 
+                 fontWeight: 600, 
+                 margin: 0 
+               }}>
+                 Favourites
+               </h2>
+               <span style={{ 
                 color: '#7B1FA2', 
-                fontSize: 14, 
-                cursor: 'pointer',
-                textDecoration: 'underline'
+                 fontSize: 14, 
+                 cursor: 'pointer',
+                 textDecoration: 'underline'
+               }}>
+                 See all
+               </span>
+             </div>
+             
+                           <div className="hide-scrollbar" style={{ 
+                display: 'flex', 
+                gap: 16, 
+                overflowX: 'auto', 
+                paddingBottom: 8
               }}>
-                See all
-              </span>
-            </div>
-            
-            <div className="hide-scrollbar" style={{ 
-              display: 'flex', 
-              gap: 16, 
-              overflowX: 'auto', 
-              paddingBottom: 8
-            }}>
-              {events
-                .filter(event => {
-                  // Show events that are not in trending (different selection criteria)
-                  const eventDate = getEventDate(event);
-                  if (!eventDate) return false;
-                  
-                  // Prefer events with good engagement or recent events
-                  const hasGoodEngagement = (event.likescount || 0) > 5 || (event.viewscount || 0) > 10;
-                  const isRecent = eventDate.getTime() > Date.now() - (7 * 24 * 60 * 60 * 1000); // Within 7 days
-                  
-                  return hasGoodEngagement || isRecent;
-                })
-                .slice(0, 3)
-                .map((event, index) => (
+                {events
+                  .filter(event => {
+                    // Show events that are not in trending (different selection criteria)
+                    const eventDate = getEventDate(event);
+                    if (!eventDate) return false;
+                    
+                    // Prefer events with good engagement or recent events
+                    const hasGoodEngagement = (event.likescount || 0) > 5 || (event.viewscount || 0) > 10;
+                    const isRecent = eventDate.getTime() > Date.now() - (7 * 24 * 60 * 60 * 1000); // Within 7 days
+                    
+                    return hasGoodEngagement || isRecent;
+                  })
+                  .slice(0, 3)
+                  .map((event, index) => (
                   <div 
-                    key={`favourites-${event.id}`} 
+                    key={`favourites-${event.id}-unique`} 
                     data-section="favourites"
                     style={{ 
-                      minWidth: 280,
-                      background: '#1f2937', 
+                   minWidth: 280,
+                   background: '#1f2937', 
                       borderRadius: 24, 
-                      overflow: 'hidden',
+                   overflow: 'hidden',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.8), 0 1px 4px rgba(0,0,0,0.6)',
                       cursor: 'pointer'
                     }}
@@ -1278,17 +1288,17 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                   >
                     <div style={{ position: 'relative' }}>
                       <MediaDisplay event={event} height="160px" showVideoIndicator={false} />
-                      <div style={{ 
-                        position: 'absolute', 
-                        top: 12, 
-                        right: 12, 
-                        background: '#F941F9', 
-                        color: '#fff', 
-                        padding: '6px 12px', 
-                        borderRadius: 12, 
-                        fontSize: 12, 
-                        fontWeight: 600 
-                      }}>
+                     <div style={{ 
+                       position: 'absolute', 
+                       top: 12, 
+                       right: 12, 
+                       background: '#F941F9', 
+                       color: '#fff', 
+                       padding: '6px 12px', 
+                       borderRadius: 12, 
+                       fontSize: 12, 
+                       fontWeight: 600 
+                     }}>
                         {(() => {
                           const startDate = getEventDate(event);
                           const endDate = getEventDateEnd ? getEventDateEnd(event) : null;
@@ -1298,110 +1308,110 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                           }
                           return startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
                         })()}
-                      </div>
-                      {/* Unified gradient background for title and company name */}
-                      <div style={{ 
-                        position: 'absolute', 
-                        bottom: 0, 
-                        left: 0, 
-                        right: 0, 
-                        background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.6))',
-                        padding: '32px 12px 12px 12px',
-                        color: '#fff'
-                      }}>
-                        {/* Event title */}
-                        <div style={{ 
-                          fontSize: 14,
-                          fontWeight: 700,
-                          textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
-                          lineHeight: 1.2,
-                          marginBottom: 8
-                        }}>
-                          {event.title || event.caption || 'Event Title'}
-                        </div>
-                        {/* Company name and likes count */}
-                        <div style={{ 
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center'
-                        }}>
-                          <div style={{ 
-                            fontSize: 12,
-                            fontWeight: 600,
-                            textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
-                            color: '#87CEEB'
-                          }}>
-                            {event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}
-                          </div>
-                          <div style={{ 
-                            fontSize: 11,
-                            fontWeight: 600,
-                            color: '#fff',
+                     </div>
+                     {/* Unified gradient background for title and company name */}
+                     <div style={{ 
+                       position: 'absolute', 
+                       bottom: 0, 
+                       left: 0, 
+                       right: 0, 
+                       background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.6))',
+                       padding: '32px 12px 12px 12px',
+                       color: '#fff'
+                     }}>
+                        {/* Event title - FAVOURITES SECTION */}
+                       <div style={{ 
+                         fontSize: 14,
+                         fontWeight: 700,
+                          textShadow: '0 2px 8px rgba(0, 0, 0, 0.9), 0 1px 4px rgba(0, 0, 0, 0.8)',
+                         lineHeight: 1.2,
+                         marginBottom: 8
+                       }}>
+                         {event.title || event.caption || 'Event Title'}
+                       </div>
+                        {/* Company name and likes count - FAVOURITES SECTION */}
+                       <div style={{ 
+                         display: 'flex',
+                         justifyContent: 'space-between',
+                         alignItems: 'center'
+                       }}>
+                         <div style={{ 
+                           fontSize: 12,
+                           fontWeight: 600,
+                            textShadow: '0 2px 8px rgba(0, 0, 0, 0.9), 0 1px 4px rgba(0, 0, 0, 0.8)',
+                           color: '#87CEEB'
+                         }}>
+                           {event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}
+                         </div>
+                         <div style={{ 
+                           fontSize: 11,
+                           fontWeight: 600,
+                           color: '#fff',
                             background: '#10B981',
-                            borderRadius: 12,
-                            padding: '4px 8px',
+                           borderRadius: 12,
+                           padding: '4px 8px',
                             boxShadow: '0 2px 8px rgba(16, 185, 129, 0.08)'
-                          }}>
-                            {event.likescount > 0 ? `${event.likescount} likes` : 'New Event'}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
+                         }}>
+                           {event.likescount > 0 ? `${event.likescount} likes` : 'New Event'}
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+               ))}
+             </div>
+           </div>
 
-          {/* Explore Section */}
-          <div style={{ marginBottom: 32 }}>
-            <h2 style={{ 
-              color: '#F2F2F2', 
-              fontSize: 24, 
-              fontWeight: 600, 
-              margin: '0 0 16px 0' 
-            }}>
-              Explore events
-            </h2>
-            
+           {/* Explore Section */}
+           <div style={{ marginBottom: 32 }}>
+             <h2 style={{ 
+               color: '#F2F2F2', 
+               fontSize: 24, 
+               fontWeight: 600, 
+               margin: '0 0 16px 0' 
+             }}>
+               Explore events
+             </h2>
+             
             {loading ? (
               <div style={{ color: '#fff', textAlign: 'center', marginTop: 40, fontSize: 18 }}>
                 Loading events...
               </div>
-            ) : (
-              <div style={{ 
-                display: 'grid', 
-                gridTemplateColumns: 'repeat(2, 1fr)', 
-                gap: 16 
-              }}>
-                {events
-                  .filter(event => {
-                    // Exclude events that are already shown in trending and favourites
-                    const trendingEvents = events
-                      .sort((a, b) => {
-                        const viewsA = a.viewscount || 0;
-                        const viewsB = b.viewscount || 0;
-                        const likesA = a.likescount || 0;
-                        const likesB = b.likescount || 0;
-                        if (viewsA !== viewsB) return viewsB - viewsA;
-                        return likesB - likesA;
-                      })
-                      .slice(0, 3)
-                      .map(e => e.id);
-                    
-                    const favouriteEvents = events
-                      .filter(e => {
-                        const eventDate = getEventDate(e);
-                        if (!eventDate) return false;
-                        const hasGoodEngagement = (e.likescount || 0) > 5 || (e.viewscount || 0) > 10;
-                        const isRecent = eventDate.getTime() > Date.now() - (7 * 24 * 60 * 60 * 1000);
-                        return hasGoodEngagement || isRecent;
-                      })
-                      .slice(0, 3)
-                      .map(e => e.id);
-                    
-                    const excludedIds = [...trendingEvents, ...favouriteEvents];
-                    return !excludedIds.includes(event.id);
-                  })
+             ) : (
+                               <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(2, 1fr)', 
+                  gap: 16 
+                }}>
+                  {events
+                    .filter(event => {
+                      // Exclude events that are already shown in trending and favourites
+                      const trendingEvents = events
+                        .sort((a, b) => {
+                          const viewsA = a.viewscount || 0;
+                          const viewsB = b.viewscount || 0;
+                          const likesA = a.likescount || 0;
+                          const likesB = b.likescount || 0;
+                          if (viewsA !== viewsB) return viewsB - viewsA;
+                          return likesB - likesA;
+                        })
+                        .slice(0, 3)
+                        .map(e => e.id);
+                      
+                      const favouriteEvents = events
+                        .filter(e => {
+                          const eventDate = getEventDate(e);
+                          if (!eventDate) return false;
+                          const hasGoodEngagement = (e.likescount || 0) > 5 || (e.viewscount || 0) > 10;
+                          const isRecent = eventDate.getTime() > Date.now() - (7 * 24 * 60 * 60 * 1000);
+                          return hasGoodEngagement || isRecent;
+                        })
+                        .slice(0, 3)
+                        .map(e => e.id);
+                      
+                      const excludedIds = [...trendingEvents, ...favouriteEvents];
+                      return !excludedIds.includes(event.id);
+                    })
                   .sort((a, b) => {
                     // Sort by date, earliest first
                     const dateA = getEventDate(a);
@@ -1411,14 +1421,14 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                     if (!dateB) return -1;
                     return dateA.getTime() - dateB.getTime();
                   })
-                  .map((event, index) => (
+                    .map((event, index) => (
                     <div 
                       key={`explore-${event.id}`} 
                       data-section="explore"
                       style={{ 
-                        background: '#1f2937', 
+                     background: '#1f2937', 
                         borderRadius: 24, 
-                        overflow: 'hidden',
+                     overflow: 'hidden',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.8), 0 1px 4px rgba(0,0,0,0.6)',
                         cursor: 'pointer'
                       }}
@@ -1426,17 +1436,17 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                     >
                       <div style={{ position: 'relative' }}>
                         <MediaDisplay event={event} height="120px" showVideoIndicator={false} />
-                        <div style={{ 
-                          position: 'absolute', 
-                          top: 8, 
-                          right: 8, 
-                          background: '#F941F9', 
+                       <div style={{ 
+                         position: 'absolute', 
+                         top: 8, 
+                         right: 8, 
+                         background: '#F941F9', 
                           color: '#fff', 
-                          padding: '3px 8px', 
-                          borderRadius: 8, 
-                          fontSize: 10, 
-                          fontWeight: 600 
-                        }}>
+                         padding: '3px 8px', 
+                         borderRadius: 8, 
+                         fontSize: 10, 
+                         fontWeight: 600 
+                       }}>
                           {(() => {
                             const startDate = getEventDate(event);
                             const endDate = getEventDateEnd ? getEventDateEnd(event) : null;
@@ -1446,63 +1456,63 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                             }
                             return startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
                           })()}
-                        </div>
-                        {/* Unified gradient background for title and company name */}
-                        <div style={{ 
-                          position: 'absolute', 
-                          bottom: 0, 
-                          left: 0, 
-                          right: 0, 
-                          background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.6))',
-                          padding: '24px 8px 8px 8px',
-                          color: '#fff'
-                        }}>
-                          {/* Event title */}
-                          <div style={{ 
-                            fontSize: 12,
-                            fontWeight: 700,
-                            textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
-                            lineHeight: 1.2,
-                            marginBottom: 6
-                          }}>
-                            {event.title || event.caption || 'Event Title'}
-                          </div>
-                          {/* Company name and likes count */}
-                          <div style={{ 
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center'
-                          }}>
-                            <div style={{ 
-                              fontSize: 10,
-                              fontWeight: 600,
-                              textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
-                              color: '#87CEEB'
-                            }}>
-                              {event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}
-                            </div>
-                            <div style={{ 
-                              fontSize: 9,
-                              fontWeight: 600,
-                              color: '#fff',
+                       </div>
+                       {/* Unified gradient background for title and company name */}
+                       <div style={{ 
+                         position: 'absolute', 
+                         bottom: 0, 
+                         left: 0, 
+                         right: 0, 
+                         background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.6))',
+                         padding: '24px 8px 8px 8px',
+                         color: '#fff'
+                       }}>
+                                                     {/* Event title - EXPLORE SECTION */}
+                         <div style={{ 
+                           fontSize: 12,
+                           fontWeight: 700,
+                             textShadow: '0 2px 8px rgba(0, 0, 0, 0.9), 0 1px 4px rgba(0, 0, 0, 0.8)',
+                           lineHeight: 1.2,
+                           marginBottom: 6
+                         }}>
+                           {event.title || event.caption || 'Event Title'}
+                         </div>
+                           {/* Company name and likes count - EXPLORE SECTION */}
+                         <div style={{ 
+                           display: 'flex',
+                           justifyContent: 'space-between',
+                           alignItems: 'center'
+                         }}>
+                           <div style={{ 
+                             fontSize: 10,
+                             fontWeight: 600,
+                               textShadow: '0 2px 8px rgba(0, 0, 0, 0.9), 0 1px 4px rgba(0, 0, 0, 0.8)',
+                             color: '#87CEEB'
+                           }}>
+                             {event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}
+                           </div>
+                           <div style={{ 
+                             fontSize: 9,
+                             fontWeight: 600,
+                             color: '#fff',
                               background: '#10B981',
-                              borderRadius: 8,
-                              padding: '3px 6px',
+                             borderRadius: 8,
+                             padding: '3px 6px',
                               boxShadow: '0 2px 8px rgba(16, 185, 129, 0.08)'
-                            }}>
-                              {event.likescount > 0 ? `${event.likescount} likes` : 'New Event'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-              </div>
+                           }}>
+                             {event.likescount > 0 ? `${event.likescount} likes` : 'New Event'}
+                           </div>
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 ))}
+               </div>
             )}
           </div>
         </div>
       </div>
-      <BottomNav />
+      {userType === 'company' ? <BottomNavCompany unreadCount={0} /> : <BottomNav />}
     </>
   );
 }

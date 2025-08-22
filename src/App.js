@@ -501,7 +501,7 @@ function AuthPage() {
             const docRef = doc(db, collectionName, user.uid);
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
-                navigate(userType === 'company' ? '/company-events' : '/home');
+                navigate('/home');
             } else {
                 navigate(userType === 'company' ? '/company-verification-setup' : '/profile-setup');
             }
