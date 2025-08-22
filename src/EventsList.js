@@ -901,7 +901,7 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
     <>
       <div style={{ 
         minHeight: '100vh', 
-        background: 'linear-gradient(180deg, hsl(230, 45%, 9%), hsl(280, 50%, 20%))',
+        background: '#2a0845',
         paddingBottom: '80px'
       }}>
 
@@ -916,58 +916,69 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
            marginTop: '0'
          }}>
 
-            {/* Top Navigation Bar (Header + Search) */}
+                        {/* Top Navigation Bar - Just the buttons area */}
             <div style={{ 
-            background: '#111827',
-              padding: '20px',
-              margin: '-18px -18px 24px -18px',
-              borderRadius: '0'
+              background: '#0f172a',
+              padding: '8px 20px 4px 20px',
+              margin: '-18px -18px 0 -18px',
+              borderRadius: '0',
+              marginBottom: 0
             }}>
               {/* Header Section */}
               <div style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'space-between', 
-                marginBottom: 24
+                marginBottom: 0
               }}>
-                {/* Location Button */}
-                            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-                  background: '#2a0845', 
-              color: '#fff', 
-              fontWeight: 600, 
-              fontSize: 14, 
-              borderRadius: 24, 
-              padding: '12px 20px', 
-                  boxShadow: '0 2px 12px rgba(42, 8, 69, 0.3)', 
-              border: '2px solid #fff'
-            }}>
-              <svg style={{ width: 16, height: 16, marginRight: 8 }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700 }}>København, Denmark</div>
-              </div>
-            </div>
+                                               {/* Location Button */}
+                 <div style={{ 
+                   display: 'flex', 
+                   alignItems: 'center', 
+                   background: 'transparent', 
+                   color: '#fff', 
+                   fontWeight: 600, 
+                   fontSize: 14, 
+                   borderRadius: 24, 
+                   padding: '12px 20px',
+                   marginLeft: -16
+                 }}>
+                  <div style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    border: '2px solid #fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 8
+                  }}>
+                    <svg style={{ width: 16, height: 16 }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+                      <circle cx="12" cy="9" r="2.5"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#fff', marginBottom: 1, fontWeight: 400 }}>Location</div>
+                    <div style={{ fontSize: 13, fontWeight: 400, color: '#fff' }}>København, Denmark</div>
+                  </div>
+                </div>
                 
                 {/* Right Action Buttons */}
                 <div style={{ display: 'flex', gap: 12 }}>
                                    {/* Bell Notification Button */}
                    <div style={{ 
-                  width: 40, 
-                  height: 40, 
-                     background: '#2a0845', 
+                  width: 32, 
+                  height: 32, 
+                     background: 'transparent', 
                   borderRadius: '50%', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center',
                   cursor: 'pointer',
-                     boxShadow: '0 2px 12px rgba(42, 8, 69, 0.3)',
                   border: '2px solid #fff'
                    }}>
-                    <svg style={{ width: 20, height: 20, color: '#fff' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <svg style={{ width: 16, height: 16, color: '#fff' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                       <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                 </svg>
@@ -977,72 +988,41 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                    <div 
                      onClick={() => navigate(userType === 'company' ? '/company-profile' : '/profile')}
                     style={{
-                    width: 40, 
-                    height: 40, 
-                       background: '#2a0845', 
-                    borderRadius: '50%', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                       boxShadow: '0 2px 12px rgba(42, 8, 69, 0.3)',
-                    border: '2px solid #fff'
+                    width: 32, 
+                    height: 32, 
+                       background: 'transparent', 
+                  borderRadius: '50%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  border: '2px solid #fff'
                      }}
                    >
-                    <svg style={{ width: 20, height: 20, color: '#fff' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <svg style={{ width: 16, height: 16, color: '#fff' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                       <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                   </div>
                 </div>
               </div>
 
-              {/* Search Section */}
-              <div style={{ 
-                marginBottom: 4
-              }}>
-              {/* Search Bar */}
-              <div style={{ 
-                position: 'relative',
-                background: '#fff',
-                 borderRadius: 20,
-                 padding: '8px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12
-              }}>
-                <svg style={{ width: 20, height: 20, color: '#666' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="M21 21l-4.35-4.35" />
-                </svg>
-                <input 
-                  type="text" 
-                  placeholder="Search here..." 
-                  style={{ 
-                    flex: 1, 
-                    border: 'none', 
-                    outline: 'none', 
-                    fontSize: 16,
-                    background: 'transparent'
-                  }}
-                />
-                <svg style={{ width: 20, height: 20, color: '#666', cursor: 'pointer' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <rect x="3" y="4" width="18" height="18" rx="2" />
-                  <path d="M16 2v4M8 2v4M3 10h18" />
-                </svg>
-              </div>
-            </div>
           </div>
+
+
 
                                                            {/* Filter Segmented Control - Moved outside navigation bar */}
               <div style={{
                 display: 'flex',
                 justifyContent: 'center',
+                alignItems: 'center',
                 width: '100%',
-                marginBottom: 32
+                marginBottom: 32,
+                marginTop: 32,
+                gap: 16
               }}>
                <div style={{
                  display: 'flex',
-                 background: '#1f2937',
+                 background: '#0f172a',
                  borderRadius: 24,
                  padding: 3,
                  border: '2px solid #E9D5FF',
