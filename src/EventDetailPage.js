@@ -98,6 +98,8 @@ export default function EventDetailPage() {
   // console.log('🚨 EVENT DETAIL PAGE LOADED!');
   // console.log('🚨 Component mount timestamp:', new Date().toISOString());
   
+
+  
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -797,11 +799,27 @@ export default function EventDetailPage() {
     const isLeftSwipe = distance > 50;
     const isRightSwipe = distance < -50;
 
-    if (isLeftSwipe && imageUrls.length > 1) {
-      setCurrentImageIndex(prev => prev === imageUrls.length - 1 ? 0 : prev + 1);
+    if (isLeftSwipe && mediaItems && mediaItems.length > 1) {
+      // Swipe left - go to next image
+      setCurrentImageIndex(prev => {
+        const realImages = mediaItems.filter(item => item.url !== '/default-tyrolia.jpg');
+        const currentRealIndex = realImages.findIndex(item => item === mediaItems[prev]);
+        if (currentRealIndex < realImages.length - 1) {
+          return mediaItems.findIndex(item => item === realImages[currentRealIndex + 1]);
+        }
+        return prev;
+      });
     }
-    if (isRightSwipe && imageUrls.length > 1) {
-      setCurrentImageIndex(prev => prev === 0 ? imageUrls.length - 1 : prev - 1);
+    if (isRightSwipe && mediaItems && mediaItems.length > 1) {
+      // Swipe right - go to previous image
+      setCurrentImageIndex(prev => {
+        const realImages = mediaItems.filter(item => item.url !== '/default-tyrolia.jpg');
+        const currentRealIndex = realImages.findIndex(item => item === mediaItems[prev]);
+        if (currentRealIndex > 0) {
+          return mediaItems.findIndex(item => item === realImages[currentRealIndex - 1]);
+        }
+        return prev;
+      });
     }
   };
 
@@ -1155,167 +1173,126 @@ export default function EventDetailPage() {
         {/* Event Content - only show when event exists and not loading */}
         {!loading && event && (
           <>
-            <div 
-              style={{ position: 'relative', height: '12rem', margin: '16px 0', borderRadius: 18, overflow: 'hidden', boxShadow: '0 6px 20px 2px rgba(0, 0, 0, 0.7), 0 3px 12px 1px rgba(0, 0, 0, 0.5)', border: '2px solid #888888' }}
-              onTouchStart={onTouchStart}
-              onTouchMove={onTouchMove}
-              onTouchEnd={onTouchEnd}
-            >
-          {mediaItems && mediaItems.length > 0 && (
-            <>
-              {mediaItems[currentImageIndex]?.type === 'video' ? (
-                <div className="relative w-full h-full">
-                  <video
-                    src={mediaItems[currentImageIndex].url}
-                    onClick={() => openFullscreenViewer(currentImageIndex)}
-                    style={{ 
-                      width: '100%', 
-                      height: '100%', 
-                      objectFit: 'cover', 
-                      display: 'block', 
-                      borderRadius: '18px',
-                      cursor: 'pointer'
-                    }}
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
-                    onError={(e) => {
-                      console.log('❌ Video failed to load in carousel');
-                      logger.error('EventDetail - Video error details:', e);
-                      
-                      // Simple approach: just remove the failed video and show next item
-                      setMediaItems(prevItems => {
-                        const newItems = prevItems.filter((_, index) => index !== currentImageIndex);
-                        if (newItems.length === 0) {
-                          // If no items left, add a default image
-                          return [{ type: 'image', url: '/default-tyrolia.jpg' }];
-                        }
-                        // Reset to first item if current index is out of bounds
-                        if (currentImageIndex >= newItems.length) {
-                          setCurrentImageIndex(0);
-                        }
-                        return newItems;
-                      });
-                    }}
-                  />
-                  {/* Video indicator */}
-                  <div className="absolute top-2 right-2 bg-black bg-opacity-50 rounded-full p-1">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                      <path d="M8 5v14l11-7z"/>
-                    </svg>
-                  </div>
-                </div>
-              ) : (
-                <img 
-                  src={mediaItems[currentImageIndex]?.url || imageUrls[currentImageIndex]} 
-                  alt={eventTitle} 
-                  onClick={() => openFullscreenViewer(currentImageIndex)}
-                  style={{ 
-                    width: '100%', 
-                    height: '100%', 
-                    objectFit: 'cover', 
-                    display: 'block', 
-                    borderRadius: '18px',
-                    transition: 'opacity 0.3s ease-in-out',
-                    cursor: 'pointer'
-                  }}
-                  onError={(e) => {
-                    console.log('❌ Image failed to load in carousel:', mediaItems[currentImageIndex]?.url);
-                    logger.error('EventDetail - Image error details:', e);
-                    
-                    // Replace failed image with default
-                    e.target.src = '/default-tyrolia.jpg';
-                  }}
-                />
-              )}
-              
-              {/* Navigation arrows - only show if multiple media items */}
-              {mediaItems.length > 1 && (
-                <>
-                  {/* Left arrow */}
-                  <button
-                    onClick={() => setCurrentImageIndex(prev => prev === 0 ? mediaItems.length - 1 : prev - 1)}
-                    style={{
-                      position: 'absolute',
-                      left: '10px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      background: 'rgba(0, 0, 0, 0.6)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '50%',
-                      width: '40px',
-                      height: '40px',
-                      fontSize: '20px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      zIndex: 10
-                    }}
-                  >
-                    ‹
-                  </button>
-                  
-                  {/* Right arrow */}
-                  <button
-                    onClick={() => setCurrentImageIndex(prev => prev === mediaItems.length - 1 ? 0 : prev + 1)}
-                    style={{
-                      position: 'absolute',
-                      right: '10px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      background: 'rgba(0, 0, 0, 0.6)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '50%',
-                      width: '40px',
-                      height: '40px',
-                      fontSize: '20px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      zIndex: 10
-                    }}
-                  >
-                    ›
-                  </button>
-                </>
-              )}
-              
-              {/* Media indicators - always show if multiple media items */}
-              {mediaItems.length > 1 && (
-                <div style={{
-                  position: 'absolute',
-                  bottom: '10px',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  display: 'flex',
-                  gap: '8px',
-                  zIndex: 10
-                }}>
-                  {mediaItems.map((mediaItem, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setCurrentImageIndex(index)}
-                      style={{
-                        width: '10px',
-                        height: '10px',
-                        borderRadius: '50%',
-                        border: 'none',
-                        background: index === currentImageIndex ? 'white' : 'rgba(255, 255, 255, 0.5)',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
+            {/* Full-size media display - no clicking required */}
+            {mediaItems && mediaItems.length > 0 && (
+              <div 
+                style={{ margin: '16px 0', position: 'relative' }}
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
+              >
+                {mediaItems[currentImageIndex]?.type === 'video' ? (
+                  <div className="relative w-full">
+                    <video
+                      src={mediaItems[currentImageIndex].url}
+                      style={{ 
+                        width: '100%', 
+                        height: 'auto',
+                        maxHeight: '70vh',
+                        objectFit: 'contain', 
+                        display: 'block', 
+                        borderRadius: '18px',
+                        boxShadow: '0 6px 20px 2px rgba(0, 0, 0, 0.7), 0 3px 12px 1px rgba(0, 0, 0, 0.5)',
+                        border: '2px solid #888888'
+                      }}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      controls
+                      onError={(e) => {
+                        console.log('❌ Video failed to load in full display');
+                        logger.error('EventDetail - Video error details:', e);
+                        
+                        // Simple approach: just remove the failed video and show next item
+                        setMediaItems(prevItems => {
+                          const newItems = prevItems.filter((_, index) => index !== currentImageIndex);
+                          if (newItems.length === 0) {
+                            // If no items left, add a default image
+                            return [{ type: 'image', url: '/default-tyrolia.jpg' }];
+                          }
+                          // Reset to first item if current index is out of bounds
+                          if (currentImageIndex >= newItems.length) {
+                            setCurrentImageIndex(0);
+                          }
+                          return newItems;
+                        });
                       }}
                     />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-            </div>
+                    {/* Video indicator */}
+                    <div className="absolute top-4 right-4 bg-black bg-opacity-70 rounded-full p-2">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                        <path d="M8 5v14l11-7z"/>
+                      </svg>
+                    </div>
+                  </div>
+                ) : (
+                  <img 
+                    src={mediaItems[currentImageIndex]?.url || imageUrls[currentImageIndex]} 
+                    alt={eventTitle} 
+                    style={{ 
+                      width: '100%', 
+                      height: 'auto',
+                      maxHeight: '70vh',
+                      objectFit: 'contain', 
+                      display: 'block', 
+                      borderRadius: '18px',
+                      transition: 'opacity 0.3s ease-in-out',
+                      boxShadow: '0 6px 20px 2px rgba(0, 0, 0, 0.7), 0 3px 12px 1px rgba(0, 0, 0, 0.5)',
+                      border: '2px solid #888888'
+                    }}
+                    onError={(e) => {
+                      console.log('❌ Image failed to load in full display:', mediaItems[currentImageIndex]?.url);
+                      logger.error('EventDetail - Image error details:', e);
+                      
+                      // Replace failed image with default
+                      e.target.src = '/default-tyrolia.jpg';
+                    }}
+                  />
+                )}
+                
+                {/* Navigation controls removed - only dots remain at bottom of image */}
+                
+                {/* Scroll indicator at bottom of image - only show if multiple images (excluding default) */}
+                {mediaItems.length > 1 && mediaItems.some(item => item.url !== '/default-tyrolia.jpg') && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '16px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    padding: '8px 12px',
+                    background: 'rgba(0, 0, 0, 0.7)',
+                    borderRadius: '20px',
+                    backdropFilter: 'blur(10px)'
+                  }}>
+                    {mediaItems
+                      .filter(item => item.url !== '/default-tyrolia.jpg') // Exclude default image
+                      .map((mediaItem, index) => {
+                        const actualIndex = mediaItems.findIndex(item => item.url !== '/default-tyrolia.jpg') + index;
+                        return (
+                          <button
+                            key={index}
+                            onClick={() => setCurrentImageIndex(actualIndex)}
+                            style={{
+                              width: '8px',
+                              height: '8px',
+                              borderRadius: mediaItem.type === 'video' ? '20%' : '50%',
+                              border: 'none',
+                              background: actualIndex === currentImageIndex ? '#F941F9' : 'rgba(255, 255, 255, 0.6)',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease',
+                              boxShadow: actualIndex === currentImageIndex ? '0 0 8px rgba(249, 65, 249, 0.6)' : 'none'
+                            }}
+                          />
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            )}
 
         {/* Title */}
         <h1 style={{ textAlign: 'center', fontSize: '1.5rem', fontWeight: 600, margin: '24px auto', maxWidth: '320px' }}>

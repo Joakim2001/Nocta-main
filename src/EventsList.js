@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { db } from "./firebase";
 import { collection, onSnapshot, query, getDocs, orderBy, limit, where, doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
-import { CLUB_FESTIVAL_NAMES } from './club_festival_names';
+import { CLUB_FESTIVAL_NAMES, BAR_NAMES } from './club_festival_names';
 import BottomNav from './BottomNav';
 import { EventsHeader } from './EventsHeader';
 import { checkAndArchiveEvent } from './autoArchiveUtils';
@@ -669,6 +669,7 @@ function isClubOrFestival(event) {
 
 function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searchQuery }) {
   const [events, setEvents] = useState([]);
+  const [allEvents, setAllEvents] = useState([]); // Store all events separately
   const [imgError, setImgError] = useState({});
   const [loading, setLoading] = useState(true);
   const [showThreeDotsMenu, setShowThreeDotsMenu] = useState(false);
@@ -700,6 +701,41 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
     };
   }, [showThreeDotsMenu]);
 
+  // Function to filter events by type (clubs, bars, or all)
+  const applyTypeFilter = (eventsList, filterType) => {
+    if (filterType === 'all') {
+      return eventsList;
+    }
+    
+    return eventsList.filter(event => {
+      const companyName = (event.companyName || '').toLowerCase();
+      const fullname = (event.fullname || '').toLowerCase();
+      const username = (event.username || '').toLowerCase();
+      const venue = (event.venue || '').toLowerCase();
+      const club = (event.club || '').toLowerCase();
+      
+      const allNames = [companyName, fullname, username, venue, club].filter(Boolean);
+      
+      if (filterType === 'clubs') {
+        // Check if any of the event names match the club list
+        return allNames.some(name => 
+          CLUB_FESTIVAL_NAMES.some(clubName => 
+            name.includes(clubName.toLowerCase()) || clubName.toLowerCase().includes(name)
+          )
+        );
+      } else if (filterType === 'bars') {
+        // Check if any of the event names match the bar list
+        return allNames.some(name => 
+          BAR_NAMES.some(barName => 
+            name.includes(barName.toLowerCase()) || barName.toLowerCase().includes(name)
+          )
+        );
+      }
+      
+      return true;
+    });
+  };
+
   useEffect(() => {
     async function fetchEvents() {
       setLoading(true);
@@ -715,21 +751,49 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
         console.log('📊 EventsList - Total events fetched:', allEvents.length);
         console.log('📊 EventsList - Company-created events:', allEvents.filter(e => e.source === 'company-created').length);
         console.log('📊 EventsList - Instagram-scraped events:', allEvents.filter(e => e.source !== 'company-created').length);
+        
+        // Debug: Log some sample events to see their structure
+        if (allEvents.length > 0) {
+          console.log('🔍 Sample event structure:', {
+            id: allEvents[0].id,
+            title: allEvents[0].title,
+            caption: allEvents[0].caption,
+            eventDate: allEvents[0].eventDate,
+            timestamp: allEvents[0].timestamp,
+            companyName: allEvents[0].companyName,
+            fullname: allEvents[0].fullname,
+            username: allEvents[0].username,
+            source: allEvents[0].source
+          });
+        }
 
-        // Filter for current/future events
+        // Filter for current/future events (more inclusive)
         allEvents = allEvents
           .filter(event => {
             const start = getEventDate(event);
             const end = getEventDateEnd ? getEventDateEnd(event) : null;
             
-            if (!start) return false;
+            // If no start date, still show the event (don't exclude it)
+            if (!start) {
+              console.log('⚠️ Event with no date, showing anyway:', event.id, event.title);
+              return true;
+            }
+            
             // Show if event is ongoing or in the future
             if (end) {
               return now <= end;
             }
             return start >= now;
-          })
-          .filter(isClubOrFestival); // Only show club/festival events
+          });
+        
+        // Log how many events pass the date filter
+        console.log('📅 EventsList - Events after date filter:', allEvents.length);
+        
+        // Optional: Only show club/festival events (comment out to show ALL events)
+        // allEvents = allEvents.filter(isClubOrFestival);
+        
+        // Log final count
+        console.log('🎯 EventsList - Final events count:', allEvents.length);
 
         // Search filter function
         const applySearchFilter = (eventsList) => {
@@ -761,8 +825,14 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
         // Apply search filter to all events
         const filteredEvents = applySearchFilter(allEvents);
         
+        // Store all events for filtering
+        setAllEvents(filteredEvents);
+        
+        // Apply current filter
+        const filteredByType = applyTypeFilter(filteredEvents, selectedFilter);
+        
         // Sort events by date (earliest first)
-        filteredEvents.sort((a, b) => {
+        filteredByType.sort((a, b) => {
           const dateA = getEventDate(a);
           const dateB = getEventDate(b);
           
@@ -772,7 +842,7 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
           return dateA.getTime() - dateB.getTime();
         });
 
-        setEvents(filteredEvents);
+        setEvents(filteredByType);
       } catch (error) {
         logger.error('Error fetching events:', error);
         setEvents([]);
@@ -782,6 +852,26 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
     }
     fetchEvents();
   }, [searchQuery]);
+
+  // Re-filter events when filter type changes
+  useEffect(() => {
+    if (allEvents.length > 0) {
+      const filteredByType = applyTypeFilter(allEvents, selectedFilter);
+      
+      // Sort events by date (earliest first)
+      filteredByType.sort((a, b) => {
+        const dateA = getEventDate(a);
+        const dateB = getEventDate(b);
+        
+        if (!dateA && !dateB) return 0;
+        if (!dateA) return 1;
+        if (!dateB) return -1;
+        return dateA.getTime() - dateB.getTime();
+      });
+
+      setEvents(filteredByType);
+    }
+  }, [selectedFilter, allEvents]);
 
   return (
     <>
@@ -816,19 +906,19 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
               justifyContent: 'space-between', 
               marginBottom: 24
             }}>
-              {/* Location Button */}
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                background: '#7B1FA2', 
-                color: '#fff', 
-                fontWeight: 600, 
-                fontSize: 14, 
-                borderRadius: 24, 
-                padding: '12px 20px', 
-                boxShadow: '0 2px 12px rgba(123, 31, 162, 0.3)', 
-                border: '2px solid #fff'
-              }}>
+                             {/* Location Button */}
+               <div style={{ 
+                 display: 'flex', 
+                 alignItems: 'center', 
+                 background: '#2a0845', 
+                 color: '#fff', 
+                 fontWeight: 600, 
+                 fontSize: 14, 
+                 borderRadius: 24, 
+                 padding: '12px 20px', 
+                 boxShadow: '0 2px 12px rgba(42, 8, 69, 0.3)', 
+                 border: '2px solid #fff'
+               }}>
                 <svg style={{ width: 16, height: 16, marginRight: 8 }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <circle cx="12" cy="12" r="10" />
                   <circle cx="12" cy="12" r="3" />
@@ -842,21 +932,21 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
               <div style={{ display: 'flex', gap: 12 }}>
                 {/* Three Dots Menu Button */}
                 <div style={{ position: 'relative' }} data-three-dots-menu>
-                  <div 
-                    onClick={() => setShowThreeDotsMenu(!showThreeDotsMenu)}
-                    style={{ 
-                      width: 40, 
-                      height: 40, 
-                      background: '#7B1FA2', 
-                      borderRadius: '50%', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 12px rgba(123, 31, 162, 0.3)',
-                      border: '2px solid #fff'
-                    }}
-                  >
+                                     <div 
+                     onClick={() => setShowThreeDotsMenu(!showThreeDotsMenu)}
+                     style={{ 
+                       width: 40, 
+                       height: 40, 
+                       background: '#2a0845', 
+                       borderRadius: '50%', 
+                       display: 'flex', 
+                       alignItems: 'center', 
+                       justifyContent: 'center',
+                       cursor: 'pointer',
+                       boxShadow: '0 2px 12px rgba(42, 8, 69, 0.3)',
+                       border: '2px solid #fff'
+                     }}
+                   >
                     <svg style={{ width: 20, height: 20, color: '#fff' }} fill="currentColor" viewBox="0 0 24 24">
                       <circle cx="4" cy="12" r="2" />
                       <circle cx="12" cy="12" r="2" />
@@ -879,73 +969,73 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                       zIndex: 1000,
                       minWidth: 120
                     }}>
-                      <div 
-                        onClick={() => {
-                          setSelectedFilter('all');
-                          setShowThreeDotsMenu(false);
-                        }}
-                        style={{
-                          padding: '12px 16px',
-                          color: selectedFilter === 'all' ? '#F941F9' : '#fff',
-                          fontSize: 14,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          borderBottom: '1px solid #374151',
-                          backgroundColor: selectedFilter === 'all' ? 'rgba(249, 65, 249, 0.1)' : 'transparent'
-                        }}
-                      >
-                        All
-                      </div>
-                      <div 
-                        onClick={() => {
-                          setSelectedFilter('clubs');
-                          setShowThreeDotsMenu(false);
-                        }}
-                        style={{
-                          padding: '12px 16px',
-                          color: selectedFilter === 'clubs' ? '#F941F9' : '#fff',
-                          fontSize: 14,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          borderBottom: '1px solid #374151',
-                          backgroundColor: selectedFilter === 'clubs' ? 'rgba(249, 65, 249, 0.1)' : 'transparent'
-                        }}
-                      >
-                        Clubs
-                      </div>
-                      <div 
-                        onClick={() => {
-                          setSelectedFilter('bars');
-                          setShowThreeDotsMenu(false);
-                        }}
-                        style={{
-                          padding: '12px 16px',
-                          color: selectedFilter === 'bars' ? '#F941F9' : '#fff',
-                          fontSize: 14,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          backgroundColor: selectedFilter === 'bars' ? 'rgba(249, 65, 249, 0.1)' : 'transparent'
-                        }}
-                      >
-                        Bars
-                      </div>
+                                             <div 
+                         onClick={() => {
+                           setSelectedFilter('all');
+                           setShowThreeDotsMenu(false);
+                         }}
+                         style={{
+                           padding: '12px 16px',
+                           color: selectedFilter === 'all' ? '#F941F9' : '#fff',
+                           fontSize: 14,
+                           fontWeight: 600,
+                           cursor: 'pointer',
+                           borderBottom: '1px solid #374151',
+                           backgroundColor: selectedFilter === 'all' ? 'rgba(249, 65, 249, 0.1)' : 'transparent'
+                         }}
+                       >
+                         All ({allEvents.length})
+                       </div>
+                       <div 
+                         onClick={() => {
+                           setSelectedFilter('clubs');
+                           setShowThreeDotsMenu(false);
+                         }}
+                         style={{
+                           padding: '12px 16px',
+                           color: selectedFilter === 'clubs' ? '#F941F9' : '#fff',
+                           fontSize: 14,
+                           fontWeight: 600,
+                           cursor: 'pointer',
+                           borderBottom: '1px solid #374151',
+                           backgroundColor: selectedFilter === 'clubs' ? 'rgba(249, 65, 249, 0.1)' : 'transparent'
+                         }}
+                       >
+                         Clubs ({applyTypeFilter(allEvents, 'clubs').length})
+                       </div>
+                       <div 
+                         onClick={() => {
+                           setSelectedFilter('bars');
+                           setShowThreeDotsMenu(false);
+                         }}
+                         style={{
+                           padding: '12px 16px',
+                           color: selectedFilter === 'bars' ? '#F941F9' : '#fff',
+                           fontSize: 14,
+                           fontWeight: 600,
+                           cursor: 'pointer',
+                           backgroundColor: selectedFilter === 'bars' ? 'rgba(249, 65, 249, 0.1)' : 'transparent'
+                         }}
+                       >
+                         Bars ({applyTypeFilter(allEvents, 'bars').length})
+                       </div>
                     </div>
                   )}
                 </div>
                 
-                {/* Bell Notification Button */}
-                <div style={{ 
-                  width: 40, 
-                  height: 40, 
-                  background: '#7B1FA2', 
-                  borderRadius: '50%', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 12px rgba(123, 31, 162, 0.3)',
-                  border: '2px solid #fff'
-                }}>
+                                 {/* Bell Notification Button */}
+                 <div style={{ 
+                   width: 40, 
+                   height: 40, 
+                   background: '#2a0845', 
+                   borderRadius: '50%', 
+                   display: 'flex', 
+                   alignItems: 'center', 
+                   justifyContent: 'center',
+                   cursor: 'pointer',
+                   boxShadow: '0 2px 12px rgba(42, 8, 69, 0.3)',
+                   border: '2px solid #fff'
+                 }}>
                   <svg style={{ width: 20, height: 20, color: '#fff' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                     <path d="M13.73 21a2 2 0 0 1-3.46 0" />
@@ -962,7 +1052,7 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
               <div style={{ 
                 position: 'relative',
                 background: '#fff',
-                borderRadius: 12,
+                borderRadius: 20,
                 padding: '8px 16px',
                 display: 'flex',
                 alignItems: 'center',
@@ -1112,10 +1202,10 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                             fontSize: 11,
                             fontWeight: 600,
                             color: '#fff',
-                            background: '#00FF88',
+                            background: '#10B981',
                             borderRadius: 12,
                             padding: '4px 8px',
-                            boxShadow: '0 2px 8px rgba(0, 255, 136, 0.15)'
+                            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.08)'
                           }}>
                             {event.likescount > 0 ? `${event.likescount} likes` : 'New Event'}
                           </div>
@@ -1247,10 +1337,10 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                             fontSize: 11,
                             fontWeight: 600,
                             color: '#fff',
-                            background: '#00FF88',
+                            background: '#10B981',
                             borderRadius: 12,
                             padding: '4px 8px',
-                            boxShadow: '0 2px 8px rgba(0, 255, 136, 0.15)'
+                            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.08)'
                           }}>
                             {event.likescount > 0 ? `${event.likescount} likes` : 'New Event'}
                           </div>
@@ -1395,10 +1485,10 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                               fontSize: 9,
                               fontWeight: 600,
                               color: '#fff',
-                              background: '#00FF88',
+                              background: '#10B981',
                               borderRadius: 8,
                               padding: '3px 6px',
-                              boxShadow: '0 2px 8px rgba(0, 255, 136, 0.15)'
+                              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.08)'
                             }}>
                               {event.likescount > 0 ? `${event.likescount} likes` : 'New Event'}
                             </div>

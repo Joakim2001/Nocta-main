@@ -5,6 +5,27 @@ import { filterOutDeletedEvents } from './utils/eventFilters';
 import BottomNav from './BottomNav';
 import { useNavigate } from 'react-router-dom';
 
+/*
+  MAP LOCATION SETUP - UPDATED v2:
+  
+  To display events at their correct locations on the map, each event needs coordinates.
+  You can add coordinates to events in two ways:
+  
+  1. Add latitude/longitude fields directly to events in Firestore:
+     - latitude: 55.6761 (number)
+     - longitude: 12.5683 (number)
+  
+  2. Use Google Geocoding API to convert addresses to coordinates:
+     - Add address, venue, or club fields to events
+     - Use Google Geocoding service to convert to lat/lng
+     - Store the coordinates in the event document
+  
+  Currently, events without coordinates will not appear on the map.
+  Check the browser console for events with location data.
+  
+  UPDATED: Now uses same location logic as detailed event page: location || venue || club || fullname
+*/
+
 // Function to get WebP images with fallback (improved version)
 const getWebPImageUrl = (event) => {
   // Priority 1: Check for company event images first
@@ -76,8 +97,35 @@ function MapPage() {
         allEvents = await filterOutDeletedEvents(allEvents);
         console.log('Events after filtering deleted:', allEvents.length);
 
-        // Show all events (including past events)
-        console.log('Events after filtering deleted:', allEvents.length);
+        // Log events with location data for debugging (using same logic as detailed event page)
+        const eventsWithLocation = allEvents.filter(event => 
+          event.latitude && event.longitude || event.location || event.venue || event.club || event.fullname || event.companyName || event.username
+        );
+        console.log(`Events with location data: ${eventsWithLocation.length}`);
+        if (eventsWithLocation.length > 0) {
+          console.log('Sample event with location:', eventsWithLocation[0]);
+        }
+        
+        // Debug: Log the location fields for first few events
+        console.log('=== LOCATION DEBUG INFO ===');
+        allEvents.slice(0, 3).forEach((event, index) => {
+          const locationText = event.location || event.venue || event.club || event.fullname || event.companyName || event.username;
+          console.log(`Event ${index + 1}:`, {
+            title: event.title || event.caption,
+            location: event.location,
+            venue: event.venue,
+            club: event.club,
+            fullname: event.fullname,
+            companyName: event.companyName,
+            username: event.username,
+            locationText: locationText,
+            hasCoordinates: !!(event.latitude && event.longitude)
+          });
+        });
+        
+        // All events will now appear on the map (with generated locations if needed)
+        console.log(`Total events that will appear on map: ${allEvents.length}`);
+
         setEvents(allEvents);
       } catch (error) {
         console.error('Error fetching events:', error);
@@ -248,6 +296,9 @@ function MapPage() {
     // Create a single info window instance that will be reused
     const infoWindow = new window.google.maps.InfoWindow();
 
+    // Group events by location to handle clustering
+    const locationGroups = new Map();
+    
     events.forEach((event, index) => {
       console.log(`Processing event ${index + 1}:`, event.title || event.caption || 'No title');
       
@@ -259,109 +310,245 @@ function MapPage() {
         return;
       }
 
-             try {
-         const marker = new window.google.maps.Marker({
-           position: eventLocation,
-           map: mapInstance,
-           title: event.title || event.caption || 'Event',
-           icon: {
-             url: getWebPImageUrl(event),
-             scaledSize: new window.google.maps.Size(40, 40),
-             origin: new window.google.maps.Point(0, 0),
-             anchor: new window.google.maps.Point(20, 20)
-           }
-         });
+      // Create a location key for grouping (round to 4 decimal places for clustering)
+      const locationKey = `${Math.round(eventLocation.lat * 10000) / 10000},${Math.round(eventLocation.lng * 10000) / 10000}`;
+      
+      if (!locationGroups.has(locationKey)) {
+        locationGroups.set(locationKey, {
+          position: eventLocation,
+          events: [],
+          count: 0
+        });
+      }
+      
+      locationGroups.get(locationKey).events.push(event);
+      locationGroups.get(locationKey).count++;
+    });
 
-        console.log(`Marker created for event ${index + 1} at:`, eventLocation);
+    console.log(`Location groups created: ${locationGroups.size}`);
 
-                 marker.addListener('click', () => {
-           // Close any existing info window first
-           infoWindow.close();
-           
-           // Create a container div for the info window content
-           const infoContent = document.createElement('div');
-           infoContent.style.padding = '16px';
-           infoContent.style.maxWidth = '250px';
-           
-           // Create the image
-           const img = document.createElement('img');
-           img.src = getWebPImageUrl(event);
-           img.style.cssText = 'width: 100%; height: 150px; object-fit: cover; border-radius: 8px; margin-bottom: 12px;';
-           
-           // Create the title
-           const title = document.createElement('h3');
-           title.textContent = event.title || event.caption || 'Event Title';
-           title.style.cssText = 'margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1f2937;';
-           
-           // Create the company name
-           const companyName = document.createElement('p');
-           companyName.textContent = `@${event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}`;
-           companyName.style.cssText = 'margin: 0 0 8px 0; font-size: 14px; color: #6b7280;';
-           
-           // Create the date
-           const date = document.createElement('p');
-           date.textContent = getEventDate(event) ? getEventDate(event).toLocaleDateString('en-GB', { 
-             weekday: 'long', 
-             year: 'numeric', 
-             month: 'long', 
-             day: 'numeric' 
-           }) : 'Date TBA';
-           date.style.cssText = 'margin: 0; font-size: 12px; color: #9ca3af;';
-           
-           // Create the button
-           const button = document.createElement('button');
-           button.textContent = 'View Event Details';
-           button.style.cssText = `
-             width: 100%;
-             padding: 12px 16px;
-             background: linear-gradient(90deg, #F941F9 0%, #3E29F0 100%);
-             color: white;
-             border: none;
-             border-radius: 8px;
-             cursor: pointer;
-             font-size: 14px;
-             font-weight: 600;
-             margin-top: 16px;
-             box-shadow: 0 4px 12px rgba(249, 65, 249, 0.3);
-             transition: all 0.2s ease;
-           `;
-           
-           // Add hover effect
-           button.addEventListener('mouseenter', () => {
-             button.style.transform = 'translateY(-2px)';
-             button.style.boxShadow = '0 6px 16px rgba(249, 65, 249, 0.4)';
-           });
-           
-           button.addEventListener('mouseleave', () => {
-             button.style.transform = 'translateY(0)';
-             button.style.boxShadow = '0 4px 12px rgba(249, 65, 249, 0.3)';
-           });
-           
-           // Add click handler to navigate to event
-           button.addEventListener('click', () => {
-             navigate(`/event/${event.id}?from=map`);
-           });
-           
-           // Append all elements to the container
-           infoContent.appendChild(img);
-           infoContent.appendChild(title);
-           infoContent.appendChild(companyName);
-           infoContent.appendChild(date);
-           infoContent.appendChild(button);
-           
-           // Set the content and open the info window
-           infoWindow.setContent(infoContent);
-           infoWindow.open(mapInstance, marker);
-         });
+    // Create markers for each location group
+    locationGroups.forEach((group, locationKey) => {
+      try {
+        const { position, events: eventsAtLocation, count } = group;
+        
+        // Create custom marker icon
+        const markerIcon = {
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: count === 1 ? 8 : 12, // Larger dot for multiple events
+          fillColor: '#F941F9', // Same pink/purple color as home page date boxes
+          fillOpacity: 0.9,
+          strokeColor: '#ffffff',
+          strokeWeight: 2
+        };
+
+        const marker = new window.google.maps.Marker({
+          position: position,
+          map: mapInstance,
+          title: count === 1 ? eventsAtLocation[0].title || eventsAtLocation[0].caption || 'Event' : `${count} events at this location`,
+          icon: markerIcon,
+          label: count > 1 ? {
+            text: count.toString(),
+            color: '#ffffff',
+            fontSize: '12px',
+            fontWeight: 'bold'
+          } : null
+        });
+
+        console.log(`Marker created for location ${locationKey} with ${count} events`);
+
+        marker.addListener('click', () => {
+          // Close any existing info window first
+          infoWindow.close();
+          
+          if (count === 1) {
+            // Single event - show detailed info window
+            const event = eventsAtLocation[0];
+            showSingleEventInfoWindow(event, infoWindow, mapInstance, marker);
+          } else {
+            // Multiple events - show summary info window
+            showMultipleEventsInfoWindow(eventsAtLocation, infoWindow, mapInstance, marker);
+          }
+        });
 
         newMarkers.push(marker);
       } catch (error) {
-        console.error(`Error creating marker for event ${index + 1}:`, error);
+        console.error(`Error creating marker for location ${locationKey}:`, error);
       }
     });
 
     console.log(`Total markers created: ${newMarkers.length}`);
     setMarkers(newMarkers);
+  };
+
+  // Helper function to show info window for single event
+  const showSingleEventInfoWindow = (event, infoWindow, mapInstance, marker) => {
+    const infoContent = document.createElement('div');
+    infoContent.style.padding = '16px';
+    infoContent.style.maxWidth = '250px';
+    
+    // Create the image
+    const img = document.createElement('img');
+    img.src = getWebPImageUrl(event);
+    img.style.cssText = 'width: 100%; height: 150px; object-fit: cover; border-radius: 8px; margin-bottom: 12px;';
+    
+    // Create the title
+    const title = document.createElement('h3');
+    title.textContent = event.title || event.caption || 'Event Title';
+    title.style.cssText = 'margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1f2937;';
+    
+    // Create the company name
+    const companyName = document.createElement('p');
+    companyName.textContent = `@${event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}`;
+    companyName.style.cssText = 'margin: 0 0 8px 0; font-size: 14px; color: #6b7280;';
+    
+    // Create the date
+    const date = document.createElement('p');
+    date.textContent = getEventDate(event) ? getEventDate(event).toLocaleDateString('en-GB', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    }) : 'Date TBA';
+    date.style.cssText = 'margin: 0; font-size: 12px; color: #9ca3af;';
+    
+    // Add location note if coordinates are approximate
+    if (!event.latitude || !event.longitude) {
+      const locationNote = document.createElement('p');
+      locationNote.textContent = '📍 Location is approximate';
+      locationNote.style.cssText = 'margin: 0 0 12px 0; font-size: 11px; color: #f59e0b; font-style: italic;';
+      infoContent.appendChild(locationNote);
+    }
+    
+    // Create the button
+    const button = document.createElement('button');
+    button.textContent = 'View Event Details';
+    button.style.cssText = `
+      width: 100%;
+      padding: 12px 16px;
+      background: linear-gradient(90deg, #F941F9 0%, #3E29F0 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 16px;
+      box-shadow: 0 4px 12px rgba(249, 65, 249, 0.3);
+      transition: all 0.2s ease;
+    `;
+    
+    // Add hover effect
+    button.addEventListener('mouseenter', () => {
+      button.style.transform = 'translateY(-2px)';
+      button.style.boxShadow = '0 6px 16px rgba(249, 65, 249, 0.4)';
+    });
+    
+    button.addEventListener('mouseleave', () => {
+      button.style.transform = 'translateY(0)';
+      button.style.boxShadow = '0 4px 12px rgba(249, 65, 249, 0.3)';
+    });
+    
+    // Add click handler to navigate to event
+    button.addEventListener('click', () => {
+      navigate(`/event/${event.id}?from=map`);
+    });
+    
+    // Append all elements to the container
+    infoContent.appendChild(img);
+    infoContent.appendChild(title);
+    infoContent.appendChild(companyName);
+    infoContent.appendChild(date);
+    infoContent.appendChild(button);
+    
+    // Set the content and open the info window
+    infoWindow.setContent(infoContent);
+    infoWindow.open(mapInstance, marker);
+  };
+
+  // Helper function to show info window for multiple events at same location
+  const showMultipleEventsInfoWindow = (events, infoWindow, mapInstance, marker) => {
+    const infoContent = document.createElement('div');
+    infoContent.style.padding = '16px';
+    infoContent.style.maxWidth = '300px';
+    
+    // Create header
+    const header = document.createElement('h3');
+    header.textContent = `${events.length} Events at This Location`;
+    header.style.cssText = 'margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #1f2937; text-align: center;';
+    
+    // Add location note if any events have approximate locations
+    const hasApproximateLocation = events.some(event => !event.latitude || !event.longitude);
+    if (hasApproximateLocation) {
+      const locationNote = document.createElement('p');
+      locationNote.textContent = '📍 Locations are approximate until real coordinates are added';
+      locationNote.style.cssText = 'margin: 0 0 16px 0; font-size: 11px; color: #f59e0b; font-style: italic; text-align: center;';
+      infoContent.appendChild(locationNote);
+    }
+    
+    // Create events list
+    const eventsList = document.createElement('div');
+    eventsList.style.cssText = 'max-height: 200px; overflow-y: auto;';
+    
+    events.forEach((event, index) => {
+      const eventItem = document.createElement('div');
+      eventItem.style.cssText = `
+        padding: 12px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        background: #f9fafb;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      `;
+      
+      // Add hover effect
+      eventItem.addEventListener('mouseenter', () => {
+        eventItem.style.background = '#f3f4f6';
+        eventItem.style.borderColor = '#8B5CF6';
+      });
+      
+      eventItem.addEventListener('mouseleave', () => {
+        eventItem.style.background = '#f9fafb';
+        eventItem.style.borderColor = '#e5e7eb';
+      });
+      
+      // Event title
+      const title = document.createElement('div');
+      title.textContent = event.title || event.caption || 'Event Title';
+      title.style.cssText = 'font-weight: 600; color: #1f2937; margin-bottom: 4px; font-size: 14px;';
+      
+      // Company name
+      const companyName = document.createElement('div');
+      companyName.textContent = `@${event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}`;
+      companyName.style.cssText = 'color: #6b7280; font-size: 12px; margin-bottom: 4px;';
+      
+      // Date
+      const date = document.createElement('div');
+      date.textContent = getEventDate(event) ? getEventDate(event).toLocaleDateString('en-GB', { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric' 
+      }) : 'Date TBA';
+      date.style.cssText = 'color: #9ca3af; font-size: 11px;';
+      
+      // Add click handler to navigate to event
+      eventItem.addEventListener('click', () => {
+        navigate(`/event/${event.id}?from=map`);
+      });
+      
+      eventItem.appendChild(title);
+      eventItem.appendChild(companyName);
+      eventItem.appendChild(date);
+      eventsList.appendChild(eventItem);
+    });
+    
+    infoContent.appendChild(header);
+    infoContent.appendChild(eventsList);
+    
+    // Set the content and open the info window
+    infoWindow.setContent(infoContent);
+    infoWindow.open(mapInstance, marker);
   };
 
   // Helper function to get event date
@@ -381,20 +568,91 @@ function MapPage() {
     return null;
   };
 
-  // Helper function to get event location (simplified - you can enhance this)
-  const getEventLocation = (event) => {
-    // For now, return a default location near Copenhagen
-    // In a real app, you'd store actual coordinates for each event
-    const lat = 55.6761 + (Math.random() - 0.5) * 0.1;
-    const lng = 12.5683 + (Math.random() - 0.5) * 0.1;
+  // EXACT MAPPING using the actual Firebase values from console logs
+  const VENUE_MAPPING = {
+    // Exact fullname values from Firebase (case-sensitive)
+    'Karrusel': { lat: 55.6702, lng: 12.5560 }, // Flæsketorvet area, Vesterbro
+    'Karruselfest': { lat: 55.6702, lng: 12.5560 }, // Same as Karrusel
+    'RUST': { lat: 55.6850, lng: 12.5550 }, // Guldbergsgade 8, Nørrebro
+    'VEGA': { lat: 55.6689, lng: 12.5455 }, // Enghavevej 40, Vesterbro
+    'KLUB WERKSTATT': { lat: 55.6720, lng: 12.5600 }, // Vesterbrogade area
+    'Den Anden Side': { lat: 55.6860, lng: 12.5620 }, // Ravnsborggade, Nørrebro
+    'MODULE': { lat: 55.6900, lng: 12.5700 }, // Østerbro area
+    'Hangaren': { lat: 55.6929, lng: 12.6175 }, // Refshalevej, Refshaleøen
+    'Sigurd CPH': { lat: 55.6780, lng: 12.5794 }, // City center
+    'Jolene': { lat: 55.6720, lng: 12.5580 }, // Flæsketorvet area, Vesterbro
+    'Baggen': { lat: 55.6702, lng: 12.5560 }, // Halmtorvet area, Vesterbro
+    'The Old Irish Pub Copenhagen': { lat: 55.6780, lng: 12.5700 }, // City center
+    'The Fluffy Duck': { lat: 55.6900, lng: 12.5800 }, // Østerbro
+    'Aie Afroindies': { lat: 55.6720, lng: 12.5620 }, // Vesterbro
+    'Culture Box': { lat: 55.6793, lng: 12.5800 }, // Kronprinsessegade 54A, Copenhagen city center
     
-    // Ensure coordinates are valid
-    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      console.error('Invalid coordinates generated:', { lat, lng });
-      return null;
+    // Exact username values from Firebase
+    'karruselfest': { lat: 55.6702, lng: 12.5560 }, // Same as Karrusel
+    'rustkbh': { lat: 55.6850, lng: 12.5550 }, // Same as RUST
+    'vegacph': { lat: 55.6689, lng: 12.5455 }, // Same as VEGA
+    'klub_werkstatt': { lat: 55.6720, lng: 12.5600 }, // Same as KLUB WERKSTATT
+    'den_anden_side_cph': { lat: 55.6860, lng: 12.5620 }, // Same as Den Anden Side
+    'modulecph': { lat: 55.6900, lng: 12.5700 }, // Same as MODULE
+    'hangaren_copenhagen': { lat: 55.6929, lng: 12.6175 }, // Same as Hangaren
+    'sigurd.klubben': { lat: 55.6780, lng: 12.5794 }, // Same as Sigurd CPH
+    'jolenebar': { lat: 55.6720, lng: 12.5580 }, // Same as Jolene
+    'baggenkbh': { lat: 55.6702, lng: 12.5560 }, // Same as Baggen
+    'oldirishpub_copenhagen': { lat: 55.6780, lng: 12.5700 }, // Same as The Old Irish Pub
+    'thefluffyduck.cph': { lat: 55.6900, lng: 12.5800 }, // Same as The Fluffy Duck
+    'afroindies': { lat: 55.6720, lng: 12.5620 }, // Same as Aie Afroindies
+    'cultureboxdk': { lat: 55.6793, lng: 12.5800 }, // Same as Culture Box
+    'farfarsbodega': { lat: 55.6840, lng: 12.5500 }, // Nørrebro (this one was working!)
+    
+    // Districts
+    'vesterbro': { lat: 55.6731, lng: 12.5501 }, // Vesterbro center
+    'nørrebro': { lat: 55.6831, lng: 12.5623 }, // Nørrebro center
+    'østerbro': { lat: 55.6931, lng: 12.5723 }, // Østerbro center
+    'amager': { lat: 55.6531, lng: 12.5823 }, // Amager center
+    'christiania': { lat: 55.6631, lng: 12.5923 }, // Freetown Christiania
+    'nyhavn': { lat: 55.6761, lng: 12.5923 }, // Nyhavn waterfront
+    'strøget': { lat: 55.6761, lng: 12.5683 }, // Strøget shopping street
+    'tivoli': { lat: 55.6731, lng: 12.5683 } // Tivoli gardens
+  };
+
+  // SIMPLE DIRECT MAPPING using exact Firebase values
+  const getEventLocation = (event) => {
+    // Get the exact values from Firebase
+    const fullname = event.fullname || '';
+    const username = event.username || '';
+    const companyName = event.companyName || '';
+    
+    console.log('=== getEventLocation called ===', {
+      title: event.title || event.caption,
+      fullname: fullname,
+      username: username,
+      companyName: companyName
+    });
+    
+    // Try fullname first (most specific)
+    if (fullname && VENUE_MAPPING[fullname]) {
+      const coords = VENUE_MAPPING[fullname];
+      console.log(`✅ Found fullname "${fullname}" at: ${coords.lat}, ${coords.lng}`);
+      return coords;
     }
     
-    return { lat, lng };
+    // Then try username
+    if (username && VENUE_MAPPING[username]) {
+      const coords = VENUE_MAPPING[username];
+      console.log(`✅ Found username "${username}" at: ${coords.lat}, ${coords.lng}`);
+      return coords;
+    }
+    
+    // Then try company name
+    if (companyName && VENUE_MAPPING[companyName]) {
+      const coords = VENUE_MAPPING[companyName];
+      console.log(`✅ Found company "${companyName}" at: ${coords.lat}, ${coords.lng}`);
+      return coords;
+    }
+    
+    // If no match found, place in Copenhagen center
+    console.log(`❌ No match found for: fullname="${fullname}", username="${username}", companyName="${companyName}" - placing in Copenhagen center`);
+    return { lat: 55.6761, lng: 12.5683 };
   };
 
   if (loading) {
