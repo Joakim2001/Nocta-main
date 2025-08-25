@@ -4,6 +4,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { filterOutDeletedEvents } from './utils/eventFilters';
 import BottomNav from './BottomNav';
 import { useNavigate } from 'react-router-dom';
+import { CLUB_FESTIVAL_NAMES } from './club_festival_names';
 
 /*
   MAP LOCATION SETUP - UPDATED v2:
@@ -73,6 +74,16 @@ const getWebPImageUrl = (event) => {
   return '/default-tyrolia.jpg';
 };
 
+// Helper function to get event date
+const getEventDate = (event) => {
+  if (event.eventDate && typeof event.eventDate.toDate === 'function') {
+    return event.eventDate.toDate();
+  } else if (event.eventDate) {
+    return new Date(event.eventDate);
+  }
+  return null;
+};
+
 function MapPage() {
   const navigate = useNavigate();
   const [events, setEvents] = useState([]);
@@ -82,6 +93,7 @@ function MapPage() {
   const [markers, setMarkers] = useState([]);
   const [showThreeDotsMenu, setShowThreeDotsMenu] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('All');
+  const [viewMode, setViewMode] = useState('events');
 
   // Load events from Firestore
   useEffect(() => {
@@ -675,9 +687,30 @@ function MapPage() {
 
   return (
     <>
+      {/* Google Maps Controls Removal */}
+      <style>
+        {`
+          #map .gmnoprint {
+            display: none !important;
+          }
+          #map .gm-style-moc {
+            display: none !important;
+          }
+          #map .gm-style-mtc {
+            display: none !important;
+          }
+          #map .gm-fullscreen-control {
+            display: none !important;
+          }
+          #map .gm-style-mtc button {
+            display: none !important;
+          }
+        `}
+      </style>
+      
              <div style={{ 
          minHeight: '100vh', 
-         background: 'linear-gradient(180deg, hsl(230, 45%, 9%), hsl(280, 50%, 20%))',
+         background: '#2a0845',
          display: 'flex',
          flexDirection: 'column'
        }}>
@@ -696,7 +729,8 @@ function MapPage() {
              left: '50%',
              right: '50%',
              marginLeft: '-50vw',
-             marginRight: '-50vw'
+             marginRight: '-50vw',
+             zIndex: 1002
            }}>
                                                  {/* Search Bar */}
                                                                                                                                                                                                                   <div style={{ 
@@ -802,25 +836,229 @@ function MapPage() {
              )}
            </div>
          </div>
+         
+         {/* Two Fields Under Header */}
+         <div style={{
+           display: 'flex',
+           gap: '0px',
+           marginTop: '12px',
+           padding: '3px',
+           justifyContent: 'center',
+           position: 'relative',
+           zIndex: 1000,
+           background: viewMode === 'events' ? '#2a0845' : '#0f172a',
+           borderRadius: '24px',
+           border: '2px solid #E9D5FF',
+           width: 'fit-content',
+           margin: '12px auto 0',
+           transition: 'background 0.2s ease'
+         }}>
+           {/* Explore Events Field */}
+           <div 
+             onClick={() => setViewMode('events')}
+             style={{
+               background: viewMode === 'events' ? '#F941F9' : 'transparent',
+               color: '#FFFFFF',
+               padding: '8px 2px',
+               borderRadius: viewMode === 'events' ? '22px' : '0',
+               cursor: 'pointer',
+               fontSize: 14,
+               fontWeight: '600',
+               transition: 'all 0.2s ease',
+               width: '160px',
+               textAlign: 'center'
+             }}
+             onMouseEnter={(e) => {
+               if (viewMode !== 'events') {
+                 e.target.style.background = '#374151';
+               }
+             }}
+             onMouseLeave={(e) => {
+               if (viewMode !== 'events') {
+                 e.target.style.background = 'transparent';
+               }
+             }}
+           >
+             Explore events
+           </div>
+           
+           {/* See Map Field */}
+           <div 
+             onClick={() => setViewMode('map')}
+             style={{
+               background: viewMode === 'map' ? '#F941F9' : 'transparent',
+               color: '#FFFFFF',
+               padding: '8px 2px',
+               borderRadius: viewMode === 'events' ? '0' : '22px',
+               cursor: 'pointer',
+               fontSize: 14,
+               fontWeight: '600',
+               transition: 'all 0.2s ease',
+               width: '160px',
+               textAlign: 'center'
+           }}
+             onMouseEnter={(e) => {
+               if (viewMode !== 'map') {
+                 e.target.style.background = '#374151';
+               }
+             }}
+             onMouseLeave={(e) => {
+               if (viewMode !== 'events') {
+                 e.target.style.background = 'transparent';
+               }
+             }}
+           >
+             See map
+           </div>
+         </div>
 
-                                                                                                                                               {/* Map Container */}
-            <div style={{ 
-              width: '100%',
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column'
-            }}>
-                                                 <div 
-                id="map" 
-                style={{ 
-                  width: '100%', 
-                  height: '100%',
-                  flex: 1,
-                  overflow: 'hidden',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
-                }}
-              />
-          </div>
+                                                                                                                                               {/* Conditional Content Based on View Mode */}
+            {viewMode === 'map' ? (
+              // Map View
+              <div style={{ 
+                width: '100%',
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                marginTop: '-80px'
+              }}>
+                <div 
+                  id="map" 
+                  style={{ 
+                    width: '100%', 
+                    height: '100%',
+                    flex: 1,
+                    overflow: 'hidden',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+                  }}
+                />
+              </div>
+            ) : (
+              // Events View
+              <div style={{ 
+                flex: 1, 
+                padding: '20px', 
+                background: '#2a0845',
+                overflowY: 'auto'
+              }}>
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', 
+                  gap: 16 
+                }}>
+                  {events
+                    .filter(event => {
+                      // Apply filter based on selectedFilter
+                      if (selectedFilter === 'Clubs') {
+                        return CLUB_FESTIVAL_NAMES.some(name => 
+                          (event.venue || event.club || event.companyName || event.fullname || '').toLowerCase().includes(name.toLowerCase())
+                        );
+                      } else if (selectedFilter === 'Bars') {
+                        return !CLUB_FESTIVAL_NAMES.some(name => 
+                          (event.venue || event.club || event.companyName || event.fullname || '').toLowerCase().includes(name.toLowerCase())
+                        );
+                      }
+                      return true; // 'All' filter
+                    })
+                    .sort((a, b) => {
+                      const dateA = getEventDate(a);
+                      const dateB = getEventDate(b);
+                      if (!dateA && !dateB) return 0;
+                      if (!dateA) return 1;
+                      if (!dateB) return -1;
+                      return dateA.getTime() - dateB.getTime();
+                    })
+                    .map((event, index) => (
+                      <div 
+                        key={`map-events-${event.id}`} 
+                        style={{ 
+                          background: '#1f2937', 
+                          borderRadius: 24, 
+                          overflow: 'hidden',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.8), 0 1px 4px rgba(0,0,0,0.6)',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => navigate(`/event/${event.id}?from=map`)}
+                      >
+                        <div style={{ position: 'relative' }}>
+                          <img
+                            src={getWebPImageUrl(event)}
+                            alt={event.title || event.caption || 'Event'}
+                            style={{
+                              width: '100%',
+                              height: '160px',
+                              objectFit: 'cover'
+                            }}
+                          />
+                          {/* Date badge */}
+                          <div style={{ 
+                            position: 'absolute', 
+                            top: 12, 
+                            right: 12, 
+                            background: '#F941F9', 
+                            color: '#fff', 
+                            padding: '6px 12px', 
+                            borderRadius: 12, 
+                            fontSize: 12, 
+                            fontWeight: 600 
+                          }}>
+                            {(() => {
+                              const startDate = getEventDate(event);
+                              const endDate = event.eventDateEnd ? 
+                                (typeof event.eventDateEnd.toDate === 'function' ? event.eventDateEnd.toDate() : new Date(event.eventDateEnd)) : null;
+                              
+                              if (!startDate) return 'TBA';
+                              
+                              if (endDate && !isNaN(endDate.getTime()) && endDate.getTime() !== startDate.getTime()) {
+                                return `${startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+                              }
+                              return startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+                            })()}
+                          </div>
+                          
+                          {/* Likes count overlay on image */}
+                          {event.likescount > 0 && (
+                            <div style={{
+                              position: 'absolute',
+                              bottom: '12px',
+                              right: '12px',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              color: '#fff',
+                              background: '#10B981',
+                              borderRadius: '12px',
+                              padding: '4px 8px',
+                              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.08)'
+                            }}>
+                              {event.likescount} likes
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Event details */}
+                        <div style={{ padding: '16px' }}>
+                          <h3 style={{
+                            fontSize: 16,
+                            fontWeight: 600,
+                            color: '#fff',
+                            margin: '0 0 8px 0',
+                            lineHeight: 1.3
+                          }}>
+                            {event.title || event.caption || 'Event Title'}
+                          </h3>
+                                                   <div style={{
+                           fontSize: 14,
+                           color: '#87CEEB',
+                           marginBottom: 0
+                         }}>
+                           {event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}
+                         </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
       </div>
       <BottomNav />
     </>

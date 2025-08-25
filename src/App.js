@@ -1219,6 +1219,12 @@ function App() {
                 (() => {
                   console.log('🔍 App.js: /chats route check - userType:', userType, 'user:', !!user);
                   
+                  // If no user is logged in, show the chat page with sign-up overlay
+                  if (!user) {
+                    console.log('🔍 App.js: No user logged in, showing ChatPagePrivate with sign-up overlay');
+                    return <ChatPagePrivate ref={chatPageRef} unreadCount={unreadCount} setUnreadCount={setUnreadCount} showSignUpOverlay={true} />;
+                  }
+                  
                   if (!userType) {
                     console.log('🔍 App.js: userType not set yet, showing loading...');
                     return <div className="flex justify-center items-center min-h-screen text-white">Loading user type...</div>;
@@ -1233,7 +1239,19 @@ function App() {
                   }
                 })()
               } />
-              <Route path="/my-tickets" element={<MyTickets />} />
+              <Route path="/my-tickets" element={
+                (() => {
+                  console.log('🔍 App.js: /my-tickets route check - user:', !!user);
+                  
+                  // If no user is logged in, show the tickets page with sign-up overlay
+                  if (!user) {
+                    console.log('🔍 App.js: No user logged in, showing MyTickets with sign-up overlay');
+                    return <MyTickets showSignUpOverlay={true} />;
+                  }
+                  
+                  return <MyTickets />;
+                })()
+              } />
               <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="/payment-cancel" element={<PaymentCancel />} />
               <Route path="/admin-dashboard" element={<AdminDashboard />} />

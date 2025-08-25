@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useImperativeHandle, forwardRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { db } from './firebase';
 import { collection, query, orderBy, addDoc, serverTimestamp, onSnapshot, getDocs, updateDoc, doc, limit } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
@@ -25,7 +26,8 @@ function isClubVenue(venueName) {
   return CLUB_FESTIVAL_NAMES.map(n => n.toLowerCase()).includes(name);
 }
 
-const ChatPagePrivate = forwardRef(({ unreadCount, setUnreadCount }, ref) => {
+const ChatPagePrivate = forwardRef(({ unreadCount, setUnreadCount, showSignUpOverlay = false }, ref) => {
+  const navigate = useNavigate();
   const [clubs, setClubs] = useState([]);
   const [threads, setThreads] = useState([]); // inbox threads
   const [selectedThread, setSelectedThread] = useState(null); // {id, name, ...}
@@ -300,6 +302,71 @@ const ChatPagePrivate = forwardRef(({ unreadCount, setUnreadCount }, ref) => {
           </button>
         </div>
       </div>
+      
+      {/* Sign-up overlay for non-authenticated users */}
+      {showSignUpOverlay && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: '80px', // Leave space for bottom navigation
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#1f2937',
+            borderRadius: 24,
+            padding: '40px 20px',
+            textAlign: 'center',
+            border: '2px solid #E9D5FF',
+            maxWidth: '90%',
+            width: '400px'
+          }}>
+            <div style={{
+              fontSize: 24,
+              fontWeight: 600,
+              color: '#FFFFFF',
+              marginBottom: 16
+            }}>
+              Start Chatting with Venues
+            </div>
+            <div style={{
+              fontSize: 16,
+              color: '#9CA3AF',
+              lineHeight: 1.5,
+              marginBottom: 24
+            }}>
+              Sign up for free to start conversations with clubs, bars, and venues. Get exclusive updates and special offers directly from your favorite places.
+            </div>
+            <button
+              onClick={() => navigate('/signup')}
+              style={{
+                background: '#F941F9',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: 12,
+                padding: '16px 32px',
+                fontSize: 16,
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#E91E63';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = '#F941F9';
+              }}
+            >
+              Sign Up for Free
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#3b1a5c' }}>

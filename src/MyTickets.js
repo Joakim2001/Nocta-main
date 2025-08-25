@@ -7,7 +7,7 @@ import BottomNav from './BottomNav';
 import QRCodeComponent from './QRCodeComponent';
 
 
-export default function MyTickets() {
+export default function MyTickets({ showSignUpOverlay = false }) {
   const navigate = useNavigate();
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -78,14 +78,15 @@ export default function MyTickets() {
       setUser(currentUser);
       setAuthLoading(false);
       
-      if (!currentUser) {
+      // Only redirect if showSignUpOverlay is false
+      if (!currentUser && !showSignUpOverlay) {
         console.log('MyTickets: No user, redirecting to signup');
         navigate('/signup');
       }
     });
 
     return () => unsubscribe();
-  }, [auth, navigate]);
+  }, [auth, navigate, showSignUpOverlay]);
 
   // Fetch tickets when user is available
   useEffect(() => {
@@ -433,7 +434,8 @@ export default function MyTickets() {
     );
   };
 
-  if (authLoading || loading) {
+  // If showSignUpOverlay is true, skip loading check and show overlay immediately
+  if (!showSignUpOverlay && (authLoading || loading)) {
     return (
       <div style={{ minHeight: '100vh', background: '#3b1a5c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ color: '#fff', fontSize: '18px' }}>
@@ -445,6 +447,71 @@ export default function MyTickets() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#3b1a5c', color: '#fff', paddingBottom: 100 }}>
+      {/* Sign-up overlay for non-authenticated users */}
+      {showSignUpOverlay && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: '80px', // Leave space for bottom navigation
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#1f2937',
+            borderRadius: 24,
+            padding: '40px 20px',
+            textAlign: 'center',
+            border: '2px solid #E9D5FF',
+            maxWidth: '90%',
+            width: '400px'
+          }}>
+            <div style={{
+              fontSize: 24,
+              fontWeight: 600,
+              color: '#FFFFFF',
+              marginBottom: 16
+            }}>
+              Get Your Event Tickets
+            </div>
+            <div style={{
+              fontSize: 16,
+              color: '#9CA3AF',
+              lineHeight: 1.5,
+              marginBottom: 24
+            }}>
+              Sign up for free to purchase tickets for events, track your bookings, and get exclusive access to the best venues and experiences.
+            </div>
+            <button
+              onClick={() => navigate('/signup')}
+              style={{
+                background: '#F941F9',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: 12,
+                padding: '16px 32px',
+                fontSize: 16,
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#E91E63';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = '#F941F9';
+              }}
+            >
+              Sign Up for Free
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* Top Bar */}
       <div style={{
         display: 'flex',

@@ -1207,6 +1207,161 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
            </div>
           {/* Trending Section - END */}
 
+          {/* Events Today Section */}
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between', 
+              marginBottom: 16 
+            }}>
+              <h2 style={{ 
+                color: '#F2F2F2', 
+                fontSize: 24, 
+                fontWeight: 600, 
+                margin: 0 
+              }}>
+                Events today
+              </h2>
+              <span style={{ 
+               color: '#7B1FA2', 
+                fontSize: 14, 
+                cursor: 'pointer',
+                textDecoration: 'underline'
+              }}>
+                See all
+              </span>
+            </div>
+            
+            <div className="hide-scrollbar" style={{ 
+              display: 'flex', 
+              gap: 16, 
+              overflowX: 'auto', 
+              paddingBottom: 8
+            }}>
+              {events
+                .filter(event => {
+                  const eventDate = getEventDate(event);
+                  if (!eventDate) return false;
+                  
+                  const today = new Date();
+                  const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
+                  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                  
+                  // Check if event is today OR if today falls within a date range
+                  if (eventDay.getTime() === todayDay.getTime()) return true;
+                  
+                  // Check for date range events
+                  if (event.eventDateEnd) {
+                    const endDate = typeof event.eventDateEnd.toDate === 'function' ? 
+                      event.eventDateEnd.toDate() : new Date(event.eventDateEnd);
+                    const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+                    
+                    return todayDay >= eventDay && todayDay <= endDay;
+                  }
+                  
+                  return false;
+                })
+                .sort((a, b) => {
+                  const dateA = getEventDate(a);
+                  const dateB = getEventDate(b);
+                  if (!dateA) return 1;
+                  if (!dateB) return -1;
+                  return dateA.getTime() - dateB.getTime();
+                })
+                .slice(0, 3)
+                .map((event, index) => (
+                <div 
+                  key={`events-today-${event.id}-unique`} 
+                  data-section="events-today"
+                  style={{ 
+                   minWidth: 280,
+                   background: '#1f2937', 
+                     borderRadius: 24, 
+                   overflow: 'hidden',
+                     boxShadow: '0 2px 8px rgba(0,0,0,0.8), 0 1px 4px rgba(0,0,0,0.6)',
+                     cursor: 'pointer'
+                   }}
+                   onClick={() => navigate(`/event/${event.id}?from=home`)}
+                 >
+                   <div style={{ position: 'relative' }}>
+                     <MediaDisplay event={event} height="160px" showVideoIndicator={false} />
+                    <div style={{ 
+                      position: 'absolute', 
+                      top: 12, 
+                      right: 12, 
+                      background: '#F941F9', 
+                      color: '#fff', 
+                      padding: '6px 12px', 
+                      borderRadius: 12, 
+                      fontSize: 12, 
+                      fontWeight: 600 
+                    }}>
+                       {(() => {
+                         const startDate = getEventDate(event);
+                         const endDate = event.eventDateEnd ? 
+                           (typeof event.eventDateEnd.toDate === 'function' ? event.eventDateEnd.toDate() : new Date(event.eventDateEnd)) : null;
+                         
+                         if (!startDate) return 'TBA';
+                         
+                         if (endDate && !isNaN(endDate.getTime()) && endDate.getTime() !== startDate.getTime()) {
+                           return `${startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+                         }
+                         return startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+                       })()}
+                    </div>
+                    {/* Unified gradient background for title and company name */}
+                    <div style={{ 
+                      position: 'absolute', 
+                      bottom: 0, 
+                      left: 0, 
+                      right: 0, 
+                      background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.6))',
+                      padding: '32px 12px 12px 12px',
+                      color: '#fff'
+                    }}>
+                      <h3 style={{
+                        fontSize: 16,
+                        fontWeight: 600,
+                        margin: '0 0 4px 0',
+                        lineHeight: 1.3
+                      }}>
+                        {event.title || event.caption || 'Event Title'}
+                      </h3>
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <div style={{
+                          fontSize: 14,
+                          color: '#87CEEB',
+                          marginBottom: 0
+                        }}>
+                          {event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}
+                        </div>
+                        
+                        {event.likescount > 0 && (
+                          <div style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: '#fff',
+                            background: '#10B981',
+                            borderRadius: 12,
+                            padding: '4px 8px',
+                            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.08)'
+                          }}>
+                            {event.likescount} likes
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
            {/* Favourites Section */}
            <div style={{ marginBottom: 32 }}>
              <div style={{ 
@@ -1223,81 +1378,88 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                }}>
                  Favourites
                </h2>
-               <span style={{ 
-                color: '#7B1FA2', 
-                 fontSize: 14, 
-                 cursor: 'pointer',
-                 textDecoration: 'underline'
-               }}>
-                 See all
-               </span>
+               {userType && (
+                 <span style={{ 
+                  color: '#7B1FA2', 
+                   fontSize: 14, 
+                   cursor: 'pointer',
+                   textDecoration: 'underline'
+                 }}>
+                   See all
+                 </span>
+               )}
              </div>
              
-                           <div className="hide-scrollbar" style={{ 
-                display: 'flex', 
-                gap: 16, 
-                overflowX: 'auto', 
-                paddingBottom: 8
-              }}>
-                {events
-                  .filter(event => {
-                    // Show events that are not in trending (different selection criteria)
-                    const eventDate = getEventDate(event);
-                    if (!eventDate) return false;
-                    
-                    // Prefer events with good engagement or recent events
-                    const hasGoodEngagement = (event.likescount || 0) > 5 || (event.viewscount || 0) > 10;
-                    const isRecent = eventDate.getTime() > Date.now() - (7 * 24 * 60 * 60 * 1000); // Within 7 days
-                    
-                    return hasGoodEngagement || isRecent;
-                  })
-                  .slice(0, 3)
-                  .map((event, index) => (
-                  <div 
-                    key={`favourites-${event.id}-unique`} 
-                    data-section="favourites"
-                    style={{ 
-                   minWidth: 280,
-                   background: '#1f2937', 
-                      borderRadius: 24, 
-                   overflow: 'hidden',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.8), 0 1px 4px rgba(0,0,0,0.6)',
-                      cursor: 'pointer'
-                    }}
-                    onClick={() => navigate(`/event/${event.id}?from=home`)}
-                  >
-                    <div style={{ position: 'relative' }}>
-                      <MediaDisplay event={event} height="160px" showVideoIndicator={false} />
-                     <div style={{ 
-                       position: 'absolute', 
-                       top: 12, 
-                       right: 12, 
-                       background: '#F941F9', 
-                       color: '#fff', 
-                       padding: '6px 12px', 
-                       borderRadius: 12, 
-                       fontSize: 12, 
-                       fontWeight: 600 
-                     }}>
-                        {(() => {
-                          const startDate = getEventDate(event);
-                          const endDate = getEventDateEnd ? getEventDateEnd(event) : null;
-                          if (!startDate) return 'TBA';
-                          if (endDate && endDate.getTime() !== startDate.getTime()) {
-                            return `${startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
-                          }
-                          return startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-                        })()}
-                     </div>
-                     {/* Unified gradient background for title and company name */}
-                     <div style={{ 
-                       position: 'absolute', 
-                       bottom: 0, 
-                       left: 0, 
-                       right: 0, 
-                       background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.6))',
-                       padding: '32px 12px 12px 12px',
-                       color: '#fff'
+             {/* FAVOURITES SECTION - Content area */}
+             {userType ? (
+               <div className="hide-scrollbar" style={{ 
+                 display: 'flex', 
+                 gap: 16, 
+                 overflowX: 'auto', 
+                 paddingBottom: 8
+               }}>
+                 {events
+                   .filter(event => {
+                     // Show events that are not in trending (different selection criteria)
+                     const eventDate = getEventDate(event);
+                     if (!eventDate) return false;
+                     
+                     // Prefer events with good engagement or recent events
+                     const hasGoodEngagement = (event.likescount || 0) > 5 || (event.viewscount || 0) > 10;
+                     const isRecent = eventDate.getTime() > Date.now() - (7 * 24 * 60 * 60 * 1000); // Within 7 days
+                     
+                     return hasGoodEngagement || isRecent;
+                   })
+                   .slice(0, 3)
+                   .map((event, index) => (
+                   <div 
+                     key={`favourites-${event.id}-unique`} 
+                     data-section="favourites"
+                     style={{ 
+                    minWidth: 280,
+                    background: '#1f2937', 
+                       borderRadius: 24, 
+                    overflow: 'hidden',
+                       boxShadow: '0 2px 8px rgba(0,0,0,0.8), 0 1px 4px rgba(0,0,0,0.6)',
+                       cursor: 'pointer'
+                     }}
+                     onClick={() => navigate(`/event/${event.id}?from=home`)}
+                   >
+                     <div style={{ position: 'relative' }}>
+                       <MediaDisplay event={event} height="160px" showVideoIndicator={false} />
+                      <div style={{ 
+                        position: 'absolute', 
+                        top: 12, 
+                        right: 12, 
+                        background: '#F941F9', 
+                        color: '#fff', 
+                        padding: '6px 12px', 
+                        borderRadius: 12, 
+                        fontSize: 12, 
+                        fontWeight: 600 
+                      }}>
+                         {(() => {
+                           const startDate = getEventDate(event);
+                           const endDate = event.eventDateEnd ? 
+                             (typeof event.eventDateEnd.toDate === 'function' ? event.eventDateEnd.toDate() : new Date(event.eventDateEnd)) : null;
+                           
+                           if (!startDate) return 'TBA';
+                           
+                           if (endDate && !isNaN(endDate.getTime()) && endDate.getTime() !== startDate.getTime()) {
+                             return `${startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+                           }
+                           return startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+                         })()}
+                      </div>
+                      {/* Unified gradient background for title and company name */}
+                      <div style={{ 
+                        position: 'absolute', 
+                        bottom: 0, 
+                        left: 0, 
+                        right: 0, 
+                        background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.6))',
+                        padding: '32px 12px 12px 12px',
+                        color: '#fff'
                      }}>
                         {/* Event title - FAVOURITES SECTION */}
                        <div style={{ 
@@ -1340,9 +1502,37 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                  </div>
                ))}
              </div>
-           </div>
+           ) : (
+             <div style={{
+               background: '#1f2937',
+               borderRadius: 24,
+               padding: '40px 20px',
+               textAlign: 'center',
+               border: '2px solid #E9D5FF',
+               cursor: 'pointer',
+               transition: 'all 0.2s ease'
+             }}
+             onClick={() => navigate('/signup')}
+             onMouseEnter={(e) => {
+               e.target.style.background = '#374151';
+             }}
+             onMouseLeave={(e) => {
+               e.target.style.background = '#1f2937';
+             }}
+             >
+               <div style={{
+                 fontSize: 14,
+                 color: '#FFFFFF',
+                 lineHeight: 1.4,
+                 textDecoration: 'underline'
+               }}>
+                 Create an account to save your favorite venues and get personalized event recommendations
+               </div>
+             </div>
+           )}
+         </div>
 
-           {/* Explore Section */}
+         {/* Explore Section */}
            <div style={{ marginBottom: 32 }}>
              <h2 style={{ 
                color: '#F2F2F2', 
