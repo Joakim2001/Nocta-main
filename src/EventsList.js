@@ -128,6 +128,8 @@ function isStoragePath(val) {
 
 // Function to get WebP images with fallback
 const getWebPImageUrl = (event) => {
+  console.log('🔍 getWebPImageUrl - Checking event:', event.id);
+  
   // Priority 1: Check for company event images first
   if (event.imageUrls && Array.isArray(event.imageUrls) && event.imageUrls.length > 0) {
     // Check if any of the imageUrls are WebP
@@ -143,8 +145,15 @@ const getWebPImageUrl = (event) => {
   // Priority 2: Check for WebP images in order of preference
   const webPFields = [
     event.WebPImage1, event.WebPImage0, event.WebPImage2, event.WebPImage3,
-    event.WebPImage4, event.WebPImage5, event.WebPImage6, event.WebPDisplayurl
+    event.WebPImage4, event.WebPImage5, event.WebPImage6, event.WebPDisplayurl,
+    // Add more possible field names
+    event.webpImage1, event.webpImage0, event.webpImage2, event.webpImage3,
+    event.webpImage4, event.webpImage5, event.webpImage6, event.webpDisplayurl,
+    event.webp_image1, event.webp_image0, event.webp_image2, event.webp_image3,
+    event.webp_image4, event.webp_image5, event.webp_image6, event.webp_displayurl
   ];
+  
+  console.log('🔍 Checking WebP fields:', webPFields.filter(f => f).length, 'non-null fields');
   
   for (const webPField of webPFields) {
     if (webPField && webPField !== null) {
@@ -152,6 +161,7 @@ const getWebPImageUrl = (event) => {
       const isWebPStorageUrl = webPField.includes('webp_') && (webPField.includes('firebasestorage.googleapis.com') || webPField.includes('nocta_bucket'));
       
       if (isWebPDataUrl || isWebPStorageUrl) {
+        console.log('✅ Found WebP image:', webPField);
         return webPField;
       }
     }
@@ -160,60 +170,78 @@ const getWebPImageUrl = (event) => {
   // Priority 3: Check for original images
   const originalFields = [
     event.Image1, event.Image0, event.Image2, event.Image3, 
-    event.Image4, event.Image5, event.Image6, event.Displayurl
+    event.Image4, event.Image5, event.Image6, event.Displayurl,
+    // Add lowercase versions
+    event.image1, event.image0, event.image2, event.image3,
+    event.image4, event.image5, event.image6, event.displayurl
   ];
+  
+  console.log('🔍 Checking original image fields:', originalFields.filter(f => f).length, 'non-null fields');
   
   for (const originalField of originalFields) {
     if (originalField && originalField !== null && originalField.trim() !== '') {
-        return originalField;
+      console.log('✅ Found original image:', originalField);
+      return originalField;
     }
   }
   
+  console.log('❌ No images found, using default');
   // Fallback to default image
   return '/default-tyrolia.jpg';
 };
 
 // Function to get the best media (video or image) for an event
 const getBestMedia = (event) => {
-  const videoUrl = event.optimizedVideourl || event.webMVideourl || event.videourl || event.videoUrl || event.VideoURL;
+  const videoUrl = event.optimizedvideourl || event.optimizedVideourl || event.webMVideourl || event.videourl || event.videoUrl || event.VideoURL;
   if (videoUrl && videoUrl.trim() !== '') {
+    console.log('🎥 Video found for event:', event.id, 'URL:', videoUrl);
     return { type: 'video', url: videoUrl };
   }
+  console.log('🖼️ No video found for event:', event.id, 'using image instead');
   return { type: 'image', url: getWebPImageUrl(event) };
 };
 
 // Component to display media (video or image) with proper styling
 const MediaDisplay = ({ event, height = '160px', showVideoIndicator = false }) => {
   const media = getBestMedia(event);
+  const [mediaType, setMediaType] = useState(media.type);
+  const [mediaUrl, setMediaUrl] = useState(media.url);
   
-  if (media.type === 'video') {
+  // Update state when media changes
+  useEffect(() => {
+    setMediaType(media.type);
+    setMediaUrl(media.url);
+  }, [media.type, media.url]);
+  
+  // If we have a video, try to load it first
+  if (mediaType === 'video') {
     return (
-      <>
-        <video
-          src={media.url}
-          style={{
-            width: '100%',
-            height: height,
-            objectFit: 'cover',
-            borderRadius: '24px 24px 0 0'
-          }}
-          autoPlay
-          muted
-          loop
-          playsInline
-          onError={() => {
-            console.log('❌ Video failed to load, falling back to image');
-            const img = document.querySelector(`[data-event-id="${event.id}"] img`);
-            if (img) img.style.display = 'block';
-          }}
-        />
-      </>
+      <video
+        src={mediaUrl}
+        style={{
+          width: '100%',
+          height: height,
+          objectFit: 'cover',
+          borderRadius: '24px 24px 0 0'
+        }}
+        autoPlay
+        muted
+        loop
+        playsInline
+        onError={() => {
+          console.log('❌ Video failed to load for event:', event.id, 'falling back to image');
+          // Fall back to image when video fails
+          setMediaType('image');
+          setMediaUrl(getWebPImageUrl(event));
+        }}
+      />
     );
   }
   
+  // Show image (either original or fallback)
   return (
     <img
-      src={media.url}
+      src={mediaUrl}
       alt={event.title || event.caption}
       style={{
         width: '100%',
@@ -222,9 +250,8 @@ const MediaDisplay = ({ event, height = '160px', showVideoIndicator = false }) =
         borderRadius: '24px 24px 0 0'
       }}
       onError={() => {
-        console.log('❌ Image failed to load, using default');
-        const img = document.querySelector(`[data-event-id="${event.id}"] img`);
-        if (img) img.src = '/default-tyrolia.jpg';
+        console.log('❌ Image failed to load for event:', event.id, 'using default');
+        setMediaUrl('/default-tyrolia.jpg');
       }}
     />
   );
@@ -1086,14 +1113,7 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                }}>
                  Trending
                </h2>
-               <span style={{ 
-                color: '#7B1FA2', 
-                 fontSize: 14, 
-                 cursor: 'pointer',
-                 textDecoration: 'underline'
-               }}>
-                 See all
-               </span>
+
              </div>
              
                            <div className="hide-scrollbar" style={{ 
@@ -1115,7 +1135,7 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                     // If same views, compare by likes
                     return likesB - likesA; // Higher likes first
                   })
-                  .slice(0, 3)
+                  .slice(0, 5)
                   .map((event, index) => (
                   <div 
                                         key={`trending-${event.id}-unique`}
@@ -1221,16 +1241,9 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                 fontWeight: 600, 
                 margin: 0 
               }}>
-                Events today
+                This weeks events
               </h2>
-              <span style={{ 
-               color: '#7B1FA2', 
-                fontSize: 14, 
-                cursor: 'pointer',
-                textDecoration: 'underline'
-              }}>
-                See all
-              </span>
+
             </div>
             
             <div className="hide-scrollbar" style={{ 
@@ -1248,16 +1261,21 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                   const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
                   const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
                   
-                  // Check if event is today OR if today falls within a date range
-                  if (eventDay.getTime() === todayDay.getTime()) return true;
+                  // Check if event is within the next 7 days
+                  const nextWeek = new Date(today);
+                  nextWeek.setDate(today.getDate() + 7);
                   
-                  // Check for date range events
+                  // Check for single date events within 7 days
+                  if (eventDay >= todayDay && eventDay <= nextWeek) return true;
+                  
+                  // Check for date range events where any date within 7 days falls within the range
                   if (event.eventDateEnd) {
                     const endDate = typeof event.eventDateEnd.toDate === 'function' ? 
                       event.eventDateEnd.toDate() : new Date(event.eventDateEnd);
                     const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
                     
-                    return todayDay >= eventDay && todayDay <= endDay;
+                    // Check if the 7-day window overlaps with the event's date range
+                    return (eventDay <= nextWeek && endDay >= todayDay);
                   }
                   
                   return false;
@@ -1269,7 +1287,6 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                   if (!dateB) return -1;
                   return dateA.getTime() - dateB.getTime();
                 })
-                .slice(0, 3)
                 .map((event, index) => (
                 <div 
                   key={`events-today-${event.id}-unique`} 
@@ -1504,30 +1521,54 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
              </div>
            ) : (
              <div style={{
-               background: '#1f2937',
-               borderRadius: 24,
-               padding: '40px 20px',
+               background: '#1A202C',
+               borderRadius: 20,
+               padding: '24px 20px',
                textAlign: 'center',
-               border: '2px solid #E9D5FF',
+               border: '1px solid #2D3748',
                cursor: 'pointer',
-               transition: 'all 0.2s ease'
+               transition: 'all 0.2s ease',
+               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
              }}
              onClick={() => navigate('/signup')}
              onMouseEnter={(e) => {
-               e.target.style.background = '#374151';
+               e.target.style.background = '#2D3748';
+               e.target.style.borderColor = '#4A5568';
              }}
              onMouseLeave={(e) => {
-               e.target.style.background = '#1f2937';
+               e.target.style.background = '#1A202C';
+               e.target.style.borderColor = '#2D3748';
              }}
              >
                <div style={{
-                 fontSize: 14,
-                 color: '#FFFFFF',
-                 lineHeight: 1.4,
-                 textDecoration: 'underline'
+                 fontSize: 16,
+                 color: '#E2E8F0',
+                 lineHeight: 1.5,
+                 marginBottom: 16,
+                 opacity: 0.9
                }}>
-                 Create an account to save your favorite venues and get personalized event recommendations
+                 Sign up for free to save your favorite venues and get personalized event recommendations.
                </div>
+               <button style={{
+                 background: '#F941F9',
+                 color: '#FFFFFF',
+                 border: 'none',
+                 borderRadius: 24,
+                 padding: '12px 24px',
+                 fontSize: 16,
+                 fontWeight: 600,
+                 cursor: 'pointer',
+                 transition: 'all 0.2s ease'
+               }}
+               onMouseEnter={(e) => {
+                 e.target.style.background = '#E91E63';
+               }}
+               onMouseLeave={(e) => {
+                 e.target.style.background = '#F941F9';
+               }}
+               >
+                 Sign Up for Free
+               </button>
              </div>
            )}
          </div>
@@ -1555,7 +1596,7 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                 }}>
                   {events
                     .filter(event => {
-                      // Exclude events that are already shown in trending and favourites
+                      // Exclude events that are already shown in trending and today/upcoming
                       const trendingEvents = events
                         .sort((a, b) => {
                           const viewsA = a.viewscount || 0;
@@ -1565,21 +1606,40 @@ function EventsList({ filterFavorites, showOnlyTrending, excludeFavorites, searc
                           if (viewsA !== viewsB) return viewsB - viewsA;
                           return likesB - likesA;
                         })
-                        .slice(0, 3)
+                        .slice(0, 5)
                         .map(e => e.id);
                       
-                      const favouriteEvents = events
+                      const todayUpcomingEvents = events
                         .filter(e => {
                           const eventDate = getEventDate(e);
                           if (!eventDate) return false;
-                          const hasGoodEngagement = (e.likescount || 0) > 5 || (e.viewscount || 0) > 10;
-                          const isRecent = eventDate.getTime() > Date.now() - (7 * 24 * 60 * 60 * 1000);
-                          return hasGoodEngagement || isRecent;
+                          
+                          const today = new Date();
+                          const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
+                          const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                          
+                          // Check if event is within the next 7 days
+                          const nextWeek = new Date(today);
+                          nextWeek.setDate(today.getDate() + 7);
+                          
+                          // Check for single date events within 7 days
+                          if (eventDay >= todayDay && eventDay <= nextWeek) return true;
+                          
+                          // Check for date range events where any date within 7 days falls within the range
+                          if (e.eventDateEnd) {
+                            const endDate = typeof e.eventDateEnd.toDate === 'function' ? 
+                              e.eventDateEnd.toDate() : new Date(e.eventDateEnd);
+                            const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+                            
+                            // Check if the 7-day window overlaps with the event's date range
+                            return (eventDay <= nextWeek && endDay >= todayDay);
+                          }
+                          
+                          return false;
                         })
-                        .slice(0, 3)
                         .map(e => e.id);
                       
-                      const excludedIds = [...trendingEvents, ...favouriteEvents];
+                      const excludedIds = [...trendingEvents, ...todayUpcomingEvents];
                       return !excludedIds.includes(event.id);
                     })
                   .sort((a, b) => {

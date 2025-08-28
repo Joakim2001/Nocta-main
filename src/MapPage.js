@@ -94,6 +94,7 @@ function MapPage() {
   const [showThreeDotsMenu, setShowThreeDotsMenu] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [viewMode, setViewMode] = useState('events');
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Load events from Firestore
   useEffect(() => {
@@ -236,6 +237,102 @@ function MapPage() {
     }
   }, [events, map]);
 
+  // Update map styles when dark mode changes
+  useEffect(() => {
+    if (map) {
+      const newStyles = isDarkMode ? [
+        // Dark mode styles
+        { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+        { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+        { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+        {
+          featureType: 'administrative.locality',
+          elementType: 'labels.text.fill',
+          stylers: [{ color: '#d59563' }]
+        },
+        {
+          featureType: 'poi',
+          elementType: 'labels.text.fill',
+          stylers: [{ color: '#d59563' }]
+        },
+        {
+          featureType: 'poi.park',
+          elementType: 'geometry',
+          stylers: [{ color: '#263c3f' }]
+        },
+        {
+          featureType: 'poi.park',
+          elementType: 'labels.text.fill',
+          stylers: [{ color: '#6b9a76' }]
+        },
+        {
+          featureType: 'road',
+          elementType: 'geometry',
+          stylers: [{ color: '#38414e' }]
+        },
+        {
+          featureType: 'road',
+          elementType: 'geometry.stroke',
+          stylers: [{ color: '#212a37' }]
+        },
+        {
+          featureType: 'road',
+          elementType: 'labels.text.fill',
+          stylers: [{ color: '#9ca5b3' }]
+        },
+        {
+          featureType: 'road.highway',
+          elementType: 'geometry',
+          stylers: [{ color: '#746855' }]
+        },
+        {
+          featureType: 'road.highway',
+          elementType: 'geometry.stroke',
+          stylers: [{ color: '#1f2835' }]
+        },
+        {
+          featureType: 'road.highway',
+          elementType: 'labels.text.fill',
+          stylers: [{ color: '#f3d19c' }]
+        },
+        {
+          featureType: 'transit',
+          elementType: 'geometry',
+          stylers: [{ color: '#2f3948' }]
+        },
+        {
+          featureType: 'transit.station',
+          elementType: 'labels.text.fill',
+          stylers: [{ color: '#d59563' }]
+        },
+        {
+          featureType: 'water',
+          elementType: 'geometry',
+          stylers: [{ color: '#17263c' }]
+        },
+        {
+          featureType: 'water',
+          elementType: 'labels.text.fill',
+          stylers: [{ color: '#515c6d' }]
+        },
+        {
+          featureType: 'water',
+          elementType: 'labels.text.stroke',
+          stylers: [{ color: '#17263c' }]
+        }
+      ] : [
+        // Light mode styles (default)
+        {
+          featureType: 'poi',
+          elementType: 'labels',
+          stylers: [{ visibility: 'off' }]
+        }
+      ];
+      
+      map.setOptions({ styles: newStyles });
+    }
+  }, [isDarkMode, map]);
+
   // Add global navigation function for info window buttons
   useEffect(() => {
     window.navigateToEvent = (eventId) => {
@@ -267,7 +364,88 @@ function MapPage() {
       const newMap = new window.google.maps.Map(mapElement, {
         center: userLocation,
         zoom: 12,
-        styles: [
+        styles: isDarkMode ? [
+          // Dark mode styles
+          { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+          { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+          { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+          {
+            featureType: 'administrative.locality',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#d59563' }]
+          },
+          {
+            featureType: 'poi',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#d59563' }]
+          },
+          {
+            featureType: 'poi.park',
+            elementType: 'geometry',
+            stylers: [{ color: '#263c3f' }]
+          },
+          {
+            featureType: 'poi.park',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#6b9a76' }]
+          },
+          {
+            featureType: 'road',
+            elementType: 'geometry',
+            stylers: [{ color: '#38414e' }]
+          },
+          {
+            featureType: 'road',
+            elementType: 'geometry.stroke',
+            stylers: [{ color: '#212a37' }]
+          },
+          {
+            featureType: 'road',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#9ca5b3' }]
+          },
+          {
+            featureType: 'road.highway',
+            elementType: 'geometry',
+            stylers: [{ color: '#746855' }]
+          },
+          {
+            featureType: 'road.highway',
+            elementType: 'geometry.stroke',
+            stylers: [{ color: '#1f2835' }]
+          },
+          {
+            featureType: 'road.highway',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#f3d19c' }]
+          },
+          {
+            featureType: 'transit',
+            elementType: 'geometry',
+            stylers: [{ color: '#2f3948' }]
+          },
+          {
+            featureType: 'transit.station',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#d59563' }]
+          },
+          {
+            featureType: 'water',
+            elementType: 'geometry',
+            stylers: [{ color: '#17263c' }]
+          },
+          {
+            featureType: 'water',
+            elementType: 'labels.text.fill',
+            stylers: [{ color: '#515c6d' }]
+          },
+          {
+            featureType: 'water',
+            elementType: 'labels.text.stroke',
+            stylers: [{ color: '#17263c' }]
+          }
+        ] : [
+          // Light mode styles (default)
           {
             featureType: 'poi',
             elementType: 'labels',
@@ -404,15 +582,31 @@ function MapPage() {
     img.src = getWebPImageUrl(event);
     img.style.cssText = 'width: 100%; height: 150px; object-fit: cover; border-radius: 8px; margin-bottom: 12px;';
     
-    // Create the title
+    // Create the description box
+    const descriptionBox = document.createElement('div');
+    descriptionBox.style.cssText = `
+      background: white;
+      border: 2px solid #8B5CF6;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 8px rgba(139, 92, 246, 0.1);
+    `;
+    
+    // Create the title (now inside description box)
     const title = document.createElement('h3');
     title.textContent = event.title || event.caption || 'Event Title';
-    title.style.cssText = 'margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1f2937;';
+    title.style.cssText = 'margin: 0 0 12px 0; font-size: 16px; font-weight: 600; color: #1f2937; text-align: center;';
+    
+    // Create the "DESCRIPTION" label
+    const descriptionLabel = document.createElement('div');
+    descriptionLabel.textContent = 'DESCRIPTION';
+    descriptionLabel.style.cssText = 'margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #8B5CF6; text-align: center;';
     
     // Create the company name
     const companyName = document.createElement('p');
     companyName.textContent = `@${event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}`;
-    companyName.style.cssText = 'margin: 0 0 8px 0; font-size: 14px; color: #6b7280;';
+    companyName.style.cssText = 'margin: 0 0 8px 0; font-size: 14px; color: #6b7280; text-align: center;';
     
     // Create the date
     const date = document.createElement('p');
@@ -422,7 +616,7 @@ function MapPage() {
       month: 'long', 
       day: 'numeric' 
     }) : 'Date TBA';
-    date.style.cssText = 'margin: 0; font-size: 12px; color: #9ca3af;';
+    date.style.cssText = 'margin: 0; font-size: 12px; color: #9ca3af; text-align: center;';
     
     // Add location note if coordinates are approximate
     if (!event.latitude || !event.longitude) {
@@ -466,11 +660,15 @@ function MapPage() {
       navigate(`/event/${event.id}?from=map`);
     });
     
+    // Build the description box structure
+    descriptionBox.appendChild(title);
+    descriptionBox.appendChild(descriptionLabel);
+    descriptionBox.appendChild(companyName);
+    descriptionBox.appendChild(date);
+    
     // Append all elements to the container
     infoContent.appendChild(img);
-    infoContent.appendChild(title);
-    infoContent.appendChild(companyName);
-    infoContent.appendChild(date);
+    infoContent.appendChild(descriptionBox);
     infoContent.appendChild(button);
     
     // Set the content and open the info window
@@ -721,7 +919,7 @@ function MapPage() {
              display: 'flex',
              alignItems: 'center',
              justifyContent: 'space-between',
-             background: '#1f2937',
+             background: '#0f172a',
              margin: '0 -18px',
              paddingLeft: '36px',
              paddingRight: '18px',
@@ -774,13 +972,59 @@ function MapPage() {
                  </div>
              </div>
              
-                                                     {/* Three Dots Menu */}
+             {/* Moon Toggle Button */}
+             <div style={{ 
+               position: 'fixed',
+               bottom: '100px',
+               right: '20px',
+               cursor: 'pointer',
+               zIndex: 1003
+             }}
+             onClick={() => setIsDarkMode(!isDarkMode)}
+             >
+               <div style={{
+                 background: '#0f172a',
+                 border: '2px solid #FFFFFF',
+                 color: '#F9FAFB',
+                 fontSize: '16px',
+                 padding: '6px',
+                 borderRadius: '50%',
+                 width: '32px',
+                 height: '32px',
+                 display: 'flex',
+                 alignItems: 'center',
+                 justifyContent: 'center',
+                 transition: 'all 0.2s ease',
+                 cursor: 'pointer',
+                 boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+               }}>
+                 {isDarkMode ? (
+                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                     <circle cx="12" cy="12" r="5"/>
+                     <line x1="12" y1="1" x2="12" y2="3"/>
+                     <line x1="12" y1="21" x2="12" y2="23"/>
+                     <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                     <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                     <line x1="1" y1="12" x2="3" y2="12"/>
+                     <line x1="21" y1="12" x2="23" y2="12"/>
+                     <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                     <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                   </svg>
+                 ) : (
+                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                   </svg>
+                 )}
+               </div>
+             </div>
+             
+             {/* Three Dots Menu */}
                <div style={{ position: 'relative', marginLeft: '20px' }} data-three-dots-menu>
               <button
                 onClick={() => setShowThreeDotsMenu(!showThreeDotsMenu)}
                 style={{
-                  background: '#374151',
-                  border: '2px solid #4B5563',
+                  background: '#0f172a',
+                  border: '2px solid #FFFFFF',
                   color: '#F9FAFB',
                   fontSize: '24px',
                   cursor: 'pointer',
@@ -1036,7 +1280,11 @@ function MapPage() {
                         </div>
                         
                         {/* Event details */}
-                        <div style={{ padding: '16px' }}>
+                        <div style={{ 
+                          padding: '16px',
+                          background: '#0f172a',
+                          borderRadius: '0 0 24px 24px'
+                        }}>
                           <h3 style={{
                             fontSize: 16,
                             fontWeight: 600,
@@ -1046,13 +1294,13 @@ function MapPage() {
                           }}>
                             {event.title || event.caption || 'Event Title'}
                           </h3>
-                                                   <div style={{
-                           fontSize: 14,
-                           color: '#87CEEB',
-                           marginBottom: 0
-                         }}>
-                           {event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}
-                         </div>
+                          <div style={{
+                            fontSize: 14,
+                            color: '#87CEEB',
+                            marginBottom: 0
+                          }}>
+                            {event.companyName || event.fullname || event.venue || event.club || event.username || 'Unknown'}
+                          </div>
                         </div>
                       </div>
                     ))}

@@ -1294,15 +1294,20 @@ export default function EventDetailPage() {
               </div>
             )}
 
-        {/* Title */}
-        <h1 style={{ textAlign: 'center', fontSize: '1.5rem', fontWeight: 600, margin: '24px auto', maxWidth: '320px' }}>
-          {eventTitle}
-        </h1>
-
-        
         {/* Description Card */}
         {(description || (caption && caption.length > 50)) && (
           <div style={{ background: '#fff', color: '#1f2937', borderRadius: 12, padding: '16px', margin: '16px 0', boxShadow: '0 4px 16px 1px #0008, 0 2px 8px 1px #0004' }}>
+            {/* Title moved inside description box */}
+            <div style={{ textAlign: 'center', margin: '0 0 20px 0' }}>
+              <div style={{ 
+                fontSize: '1.4rem', 
+                fontWeight: '700', 
+                color: '#1f2937', 
+                lineHeight: '1.2'
+              }}>
+                {eventTitle}
+              </div>
+            </div>
             <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#6b21a8', marginBottom: '8px' }}>DESCRIPTION</h2>
             <p style={{ fontWeight: 400, color: '#000000', whiteSpace: 'pre-wrap' }}>{description || caption}</p>
           </div>
